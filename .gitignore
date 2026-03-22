@@ -1,0 +1,43 @@
+# Build outputs
+bin/
+obj/
+dist/
+
+# VS Code / Visual Studio
+.vs/
+.vscode/
+.claude/
+*.user
+*.suo
+*.sln.docstates
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Dependencies
+node_modules/
+packages/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+logs/
+*.log
+
+# Environment files
+.env
+.env.local
+appsettings.*.json
+appsettings.json
+
+# Misc
+.angularCache/
+.angular/
+dist/

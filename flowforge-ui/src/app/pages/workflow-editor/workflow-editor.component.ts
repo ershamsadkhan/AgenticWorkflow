@@ -1,0 +1,960 @@
+import { Component, inject, signal, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
+import { ApiService } from '../../services/api.service';
+import { WorkflowNode, NodeConnection, NodeType, NODE_DEFINITIONS, NodeDefinition, WorkflowExecution } from '../../models/workflow.model';
+import { Subscription } from 'rxjs';
+
+interface CanvasNode extends WorkflowNode {
+  def: NodeDefinition;
+  selected?: boolean;
+  execStatus?: 'success' | 'failed' | 'running' | 'pending';
+}
+
+@Component({
+  selector: 'app-workflow-editor',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
+  template: `
+    <div class="editor-layout">
+      <!-- Toolbar -->
+      <div class="editor-toolbar">
+        <div class="toolbar-left">
+          <button class="btn btn-ghost btn-sm" (click)="router.navigate(['/workflows'])">← Back</button>
+          <div class="toolbar-divider"></div>
+          <input class="workflow-name-input" [(ngModel)]="workflowName" placeholder="Untitled Workflow" />
+          @if (workflowId()) {
+            <span class="version-badge">v{{ workflowVersion }}</span>
+          }
+        </div>
+        <div class="toolbar-center">
+          <div class="zoom-controls">
+            <button class="btn-icon" (click)="zoomOut()">−</button>
+            <span class="zoom-level">{{ Math.round(zoom() * 100) }}%</span>
+            <button class="btn-icon" (click)="zoomIn()">+</button>
+            <button class="btn-icon" (click)="fitToScreen()" title="Fit to screen">⊡</button>
+          </div>
+        </div>
+        <div class="toolbar-right">
+          @if (executionStatus()) {
+            <div class="exec-status" [class]="'exec-' + executionStatus()">
+              @if (executionStatus() === 'Running') { <span class="spinner"></span> }
+              {{ executionStatus() }}
+            </div>
+          }
+          <select class="input status-select" [(ngModel)]="workflowStatus">
+            <option value="Draft">Draft</option>
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" (click)="exportWorkflow()" title="Export JSON">⬇ Export</button>
+          <label class="btn btn-ghost btn-sm" title="Import JSON">
+            ⬆ Import
+            <input type="file" accept=".json" (change)="importWorkflow($event)" style="display:none" />
+          </label>
+          <button class="btn btn-secondary btn-sm" (click)="executeWorkflow()" [disabled]="nodes().length === 0 || executionStatus() === 'Running'">
+            @if (executionStatus() === 'Running') { <span class="spinner-sm"></span> } @else { ▶ }
+            Execute
+          </button>
+          <button class="btn btn-primary btn-sm" (click)="saveWorkflow()">💾 Save</button>
+        </div>
+      </div>
+
+      <div class="editor-body">
+        <!-- Node Palette -->
+        <div class="node-palette" [class.collapsed]="paletteCollapsed()">
+          <div class="palette-header">
+            @if (!paletteCollapsed()) {
+              <span class="palette-title">Nodes</span>
+              <input class="input palette-search" placeholder="Search..." [(ngModel)]="nodeSearch" />
+            }
+            <button class="btn-icon" (click)="togglePalette()">{{ paletteCollapsed() ? '▶' : '◀' }}</button>
+          </div>
+          @if (!paletteCollapsed()) {
+            @for (category of getCategories(); track category) {
+              <div class="palette-section">
+                <div class="palette-section-title">{{ category }}</div>
+                @for (def of getNodesByCategory(category); track def.type) {
+                  <div class="palette-node" draggable="true"
+                       (dragstart)="onDragStart($event, def)" (click)="addNodeToCenter(def)">
+                    <div class="palette-node-icon" [style.background]="def.color">{{ def.icon }}</div>
+                    <div class="palette-node-info">
+                      <span class="palette-node-name">{{ def.name }}</span>
+                      <span class="palette-node-desc">{{ def.description }}</span>
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+          }
+        </div>
+
+        <!-- Canvas -->
+        <div class="canvas-container" #canvasContainer
+             (mousedown)="onCanvasMouseDown($event)"
+             (mousemove)="onCanvasMouseMove($event)"
+             (mouseup)="onCanvasMouseUp()"
+             (wheel)="onWheel($event)"
+             (dragover)="onDragOver($event)"
+             (drop)="onDrop($event)">
+          <svg class="canvas-svg" [attr.viewBox]="getViewBox()">
+            <defs>
+              <pattern id="grid" [attr.width]="20 / zoom()" [attr.height]="20 / zoom()" patternUnits="userSpaceOnUse">
+                <circle [attr.cx]="1 / zoom()" [attr.cy]="1 / zoom()" [attr.r]="0.5 / zoom()" fill="var(--border-primary)" opacity="0.5"/>
+              </pattern>
+              <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                <polygon points="0 0, 8 3, 0 6" fill="var(--border-secondary)" />
+              </marker>
+            </defs>
+            <rect width="10000" height="10000" x="-5000" y="-5000" fill="url(#grid)" />
+
+            <!-- Connections -->
+            @for (conn of connections(); track conn.id) {
+              <g class="connection-group">
+                <path [attr.d]="getConnectionPath(conn)" class="connection-line"
+                      marker-end="url(#arrowhead)" />
+                <path [attr.d]="getConnectionPath(conn)" class="connection-line-hover"
+                      (click)="deleteConnection(conn)" />
+                @if (conn.label) {
+                  <text class="conn-label">{{ conn.label }}</text>
+                }
+              </g>
+            }
+            @if (tempConnection()) {
+              <path [attr.d]="tempConnection()" class="connection-line temp" />
+            }
+
+            <!-- Nodes -->
+            @for (node of nodes(); track node.id) {
+              <g [attr.transform]="'translate(' + node.positionX + ',' + node.positionY + ')'"
+                 class="canvas-node" [class.selected]="node.selected"
+                 [class.disabled]="node.isDisabled"
+                 (mousedown)="onNodeMouseDown($event, node)">
+                <!-- Node shadow + body -->
+                <rect width="200" height="68" rx="12" class="node-shadow" />
+                <rect width="200" height="68" rx="12" class="node-body"
+                      [style.stroke]="node.selected ? 'var(--accent-primary)' : node.execStatus === 'success' ? '#22c55e' : node.execStatus === 'failed' ? '#ef4444' : node.execStatus === 'running' ? '#3b82f6' : 'var(--border-primary)'"
+                      [style.stroke-width]="node.execStatus ? '2.5' : '1.5'" />
+                <!-- Color bar -->
+                <rect width="4" height="68" rx="2" [attr.fill]="node.def.color" />
+                <!-- Icon bg -->
+                <rect x="12" y="14" width="36" height="36" rx="8" [attr.fill]="node.def.color" opacity="0.15" />
+                <text x="30" y="38" text-anchor="middle" class="node-icon-text" [attr.fill]="node.def.color">{{ node.def.icon }}</text>
+                <!-- Text -->
+                <text x="58" y="28" class="node-name">{{ truncate(node.name, 18) }}</text>
+                <text x="58" y="45" class="node-type">{{ node.def.name }}</text>
+                <!-- Exec badge -->
+                @if (node.execStatus) {
+                  <circle cx="188" cy="12" r="8"
+                          [attr.fill]="node.execStatus === 'success' ? '#22c55e' : node.execStatus === 'failed' ? '#ef4444' : '#3b82f6'" />
+                  <text x="188" y="16" text-anchor="middle" font-size="9" fill="white">
+                    {{ node.execStatus === 'success' ? '✓' : node.execStatus === 'failed' ? '✕' : '⟳' }}
+                  </text>
+                }
+                <!-- Input handle -->
+                @if (node.def.inputs > 0) {
+                  <circle cx="0" cy="34" r="6" class="handle input-handle"
+                          (mouseup)="onHandleMouseUp(node, 'input')" />
+                  <circle cx="0" cy="34" r="3" class="handle-inner" />
+                }
+                <!-- Output handle(s) -->
+                @if (node.def.outputs === 1) {
+                  <circle cx="200" cy="34" r="6" class="handle output-handle"
+                          (mousedown)="onHandleMouseDown($event, node, 'output')" />
+                  <circle cx="200" cy="34" r="3" class="handle-inner-out" />
+                } @else if (node.def.outputs === 2) {
+                  <circle cx="200" cy="22" r="5" class="handle output-handle"
+                          (mousedown)="onHandleMouseDown($event, node, 'true')" />
+                  <text x="212" y="26" class="handle-label">T</text>
+                  <circle cx="200" cy="46" r="5" class="handle output-handle"
+                          (mousedown)="onHandleMouseDown($event, node, 'false')" />
+                  <text x="212" y="50" class="handle-label">F</text>
+                } @else if (node.def.outputs > 2) {
+                  @for (i of range(node.def.outputs); track i) {
+                    <circle [attr.cx]="200" [attr.cy]="14 + i * 14" r="4" class="handle output-handle"
+                            (mousedown)="onHandleMouseDown($event, node, 'output' + i)" />
+                  }
+                }
+              </g>
+            }
+          </svg>
+
+          @if (nodes().length === 0) {
+            <div class="canvas-empty">
+              <div class="empty-icon">⬡</div>
+              <h3>Start building your workflow</h3>
+              <p>Drag nodes from the palette or click to add them to the canvas</p>
+            </div>
+          }
+        </div>
+
+        <!-- Properties Panel -->
+        @if (selectedNode(); as sn) {
+          <div class="properties-panel">
+            <div class="panel-header">
+              <div class="panel-title-row">
+                <div class="panel-icon" [style.background]="sn.def.color">{{ sn.def.icon }}</div>
+                <div>
+                  <h3>{{ sn.def.name }}</h3>
+                  <span class="panel-subtitle">{{ sn.def.description }}</span>
+                </div>
+              </div>
+              <button class="btn-icon" (click)="deselectAll()">✕</button>
+            </div>
+
+            <div class="panel-body">
+              <div class="form-group">
+                <label>Name</label>
+                <input class="input" [value]="sn.name" (input)="updateNodeProp('name', $event)" />
+              </div>
+              <div class="form-group">
+                <label>Label</label>
+                <input class="input" [value]="sn.label || ''" (input)="updateNodeProp('label', $event)" placeholder="Optional display label" />
+              </div>
+
+              <!-- Node-specific config -->
+              <div class="config-section">
+                <div class="config-section-title">Configuration</div>
+                @switch (sn.type) {
+                  @case ('HttpRequest') {
+                    <div class="form-group">
+                      <label>Method</label>
+                      <select class="input" [value]="getConfig(sn, 'method', 'GET')"
+                              (change)="setConfig(sn, 'method', $any($event.target).value)">
+                        <option>GET</option><option>POST</option><option>PUT</option>
+                        <option>PATCH</option><option>DELETE</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>URL</label>
+                      <input class="input" [value]="getConfig(sn, 'url', '')"
+                             (input)="setConfig(sn, 'url', $any($event.target).value)"
+                             placeholder="https://api.example.com/endpoint" />
+                      <span class="form-hint">Supports expressions: {{ '{{' }}$json.id{{ '}}' }}</span>
+                    </div>
+                    <div class="form-group">
+                      <label>Body (JSON)</label>
+                      <textarea class="input config-textarea" rows="4"
+                                [value]="getConfig(sn, 'body', '')"
+                                (input)="setConfig(sn, 'body', $any($event.target).value)"
+                                placeholder='{"key": "value"}'></textarea>
+                    </div>
+                    <div class="form-group">
+                      <label>Auth Type</label>
+                      <select class="input" [value]="getConfig(sn, 'authType', 'none')"
+                              (change)="setConfig(sn, 'authType', $any($event.target).value)">
+                        <option value="none">None</option>
+                        <option value="bearer">Bearer Token</option>
+                        <option value="basic">Basic Auth</option>
+                      </select>
+                    </div>
+                  }
+                  @case ('Email') {
+                    <div class="form-group">
+                      <label>To</label>
+                      <input class="input" [value]="getConfig(sn, 'to', '')"
+                             (input)="setConfig(sn, 'to', $any($event.target).value)"
+                             placeholder="recipient@example.com" />
+                    </div>
+                    <div class="form-group">
+                      <label>Subject</label>
+                      <input class="input" [value]="getConfig(sn, 'subject', '')"
+                             (input)="setConfig(sn, 'subject', $any($event.target).value)"
+                             placeholder="Email subject" />
+                    </div>
+                    <div class="form-group">
+                      <label>Body (HTML)</label>
+                      <textarea class="input config-textarea" rows="5"
+                                [value]="getConfig(sn, 'body', '')"
+                                (input)="setConfig(sn, 'body', $any($event.target).value)"
+                                placeholder="<h1>Hello</h1>"></textarea>
+                    </div>
+                  }
+                  @case ('Delay') {
+                    <div class="form-group">
+                      <label>Delay (milliseconds)</label>
+                      <input class="input" type="number" min="0" max="30000"
+                             [value]="getConfig(sn, 'delayMs', 1000)"
+                             (input)="setConfig(sn, 'delayMs', +$any($event.target).value)"
+                             placeholder="1000" />
+                      <span class="form-hint">Maximum 30 seconds (30000ms)</span>
+                    </div>
+                  }
+                  @case ('Condition') {
+                    <div class="form-group">
+                      <label>Combine Conditions</label>
+                      <select class="input" [value]="getConfig(sn, 'combineWith', 'AND')"
+                              (change)="setConfig(sn, 'combineWith', $any($event.target).value)">
+                        <option value="AND">AND (all must pass)</option>
+                        <option value="OR">OR (any must pass)</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>Conditions (JSON)</label>
+                      <textarea class="input config-textarea" rows="6"
+                                [value]="getConfig(sn, 'conditions', '[]')"
+                                (input)="setConfig(sn, 'conditions', $any($event.target).value)"
+                                placeholder='[{"field":"status","operator":"equals","value":"active"}]'></textarea>
+                      <span class="form-hint">Operators: equals, notEquals, contains, greaterThan, lessThan, isEmpty, isNotEmpty</span>
+                    </div>
+                  }
+                  @case ('AiChat') {
+                    <div class="form-group">
+                      <label>Model</label>
+                      <select class="input" [value]="getConfig(sn, 'model', 'gpt-4o-mini')"
+                              (change)="setConfig(sn, 'model', $any($event.target).value)">
+                        <option value="gpt-4o-mini">GPT-4o Mini (fast)</option>
+                        <option value="gpt-4o">GPT-4o</option>
+                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>System Prompt</label>
+                      <textarea class="input config-textarea" rows="3"
+                                [value]="getConfig(sn, 'systemPrompt', 'You are a helpful assistant.')"
+                                (input)="setConfig(sn, 'systemPrompt', $any($event.target).value)"></textarea>
+                    </div>
+                    <div class="form-group">
+                      <label>User Prompt</label>
+                      <textarea class="input config-textarea" rows="3"
+                                [value]="getConfig(sn, 'prompt', '')"
+                                (input)="setConfig(sn, 'prompt', $any($event.target).value)"
+                                placeholder="{{ '{{' }}$json.text{{ '}}' }}"></textarea>
+                      <span class="form-hint">Leave empty to use input item's text field</span>
+                    </div>
+                    <div class="form-group">
+                      <label>Max Tokens</label>
+                      <input class="input" type="number"
+                             [value]="getConfig(sn, 'maxTokens', 1000)"
+                             (input)="setConfig(sn, 'maxTokens', +$any($event.target).value)" />
+                    </div>
+                  }
+                  @case ('AiAgent') {
+                    <div class="form-group">
+                      <label>Model</label>
+                      <select class="input" [value]="getConfig(sn, 'model', 'gpt-4o')"
+                              (change)="setConfig(sn, 'model', $any($event.target).value)">
+                        <option value="gpt-4o">GPT-4o (recommended)</option>
+                        <option value="gpt-4o-mini">GPT-4o Mini</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>System Instructions</label>
+                      <textarea class="input config-textarea" rows="3"
+                                [value]="getConfig(sn, 'systemPrompt', 'You are an AI agent.')"
+                                (input)="setConfig(sn, 'systemPrompt', $any($event.target).value)"></textarea>
+                    </div>
+                    <div class="form-group">
+                      <label>Task</label>
+                      <textarea class="input config-textarea" rows="3"
+                                [value]="getConfig(sn, 'task', '')"
+                                (input)="setConfig(sn, 'task', $any($event.target).value)"
+                                placeholder="Analyze the data and extract key insights..."></textarea>
+                    </div>
+                  }
+                  @case ('TextSummarizer') {
+                    <div class="form-group">
+                      <label>Text Field</label>
+                      <input class="input" [value]="getConfig(sn, 'textField', 'text')"
+                             (input)="setConfig(sn, 'textField', $any($event.target).value)"
+                             placeholder="text" />
+                      <span class="form-hint">Field from input items containing text to summarize</span>
+                    </div>
+                    <div class="form-group">
+                      <label>Style</label>
+                      <select class="input" [value]="getConfig(sn, 'style', 'concise')"
+                              (change)="setConfig(sn, 'style', $any($event.target).value)">
+                        <option value="concise">Concise</option>
+                        <option value="detailed">Detailed</option>
+                        <option value="bullet">Bullet points</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>Max Words</label>
+                      <input class="input" type="number" [value]="getConfig(sn, 'maxLength', 200)"
+                             (input)="setConfig(sn, 'maxLength', +$any($event.target).value)" />
+                    </div>
+                  }
+                  @case ('Schedule') {
+                    <div class="form-group">
+                      <label>Cron Expression</label>
+                      <input class="input" [value]="getConfig(sn, 'cron', '0 * * * *')"
+                             (input)="setConfig(sn, 'cron', $any($event.target).value)"
+                             placeholder="0 * * * *" />
+                    </div>
+                    <div class="cron-examples">
+                      <span class="form-hint">Quick presets:</span>
+                      <div class="cron-btn-row">
+                        @for (ex of cronExamples; track ex.label) {
+                          <button class="cron-btn" (click)="setConfig(sn, 'cron', ex.cron)">{{ ex.label }}</button>
+                        }
+                      </div>
+                    </div>
+                  }
+                  @case ('SqlQuery') {
+                    <div class="form-group">
+                      <label>Operation</label>
+                      <select class="input" [value]="getConfig(sn, 'operation', 'select')"
+                              (change)="setConfig(sn, 'operation', $any($event.target).value)">
+                        <option value="select">SELECT</option>
+                        <option value="insert">INSERT</option>
+                        <option value="update">UPDATE</option>
+                        <option value="delete">DELETE</option>
+                        <option value="execute">Execute Procedure</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>SQL Query</label>
+                      <textarea class="input config-textarea" rows="6"
+                                [value]="getConfig(sn, 'query', '')"
+                                (input)="setConfig(sn, 'query', $any($event.target).value)"
+                                placeholder="SELECT * FROM Users WHERE Id = '{{ '{{' }}$json.userId{{ '}}' }}'"></textarea>
+                      <span class="form-hint">Expressions supported in queries</span>
+                    </div>
+                  }
+                  @case ('Slack') {
+                    <div class="form-group">
+                      <label>Channel</label>
+                      <input class="input" [value]="getConfig(sn, 'channel', '#general')"
+                             (input)="setConfig(sn, 'channel', $any($event.target).value)"
+                             placeholder="#general or @username" />
+                    </div>
+                    <div class="form-group">
+                      <label>Message</label>
+                      <textarea class="input config-textarea" rows="4"
+                                [value]="getConfig(sn, 'text', '')"
+                                (input)="setConfig(sn, 'text', $any($event.target).value)"
+                                placeholder="Hello from FlowForge!"></textarea>
+                    </div>
+                  }
+                  @case ('SubWorkflow') {
+                    <div class="form-group">
+                      <label>Sub-Workflow ID</label>
+                      <input class="input" [value]="getConfig(sn, 'workflowId', '')"
+                             (input)="setConfig(sn, 'workflowId', $any($event.target).value)"
+                             placeholder="workflow-uuid" />
+                      <span class="form-hint">Paste the ID of the workflow to execute</span>
+                    </div>
+                  }
+                  @default {
+                    <div class="form-group">
+                      <label>Raw JSON Config</label>
+                      <textarea class="input config-textarea" [value]="sn.configuration || ''"
+                                (input)="updateNodeProp('configuration', $event)"
+                                placeholder='{ "key": "value" }' rows="8"></textarea>
+                    </div>
+                  }
+                }
+              </div>
+
+              <div class="form-group">
+                <label>Notes</label>
+                <textarea class="input" [value]="sn.notes || ''" (input)="updateNodeProp('notes', $event)"
+                          placeholder="Add notes..." rows="2"></textarea>
+              </div>
+
+              <div class="toggle-row">
+                <label class="toggle-label">
+                  <input type="checkbox" [checked]="sn.isDisabled" (change)="toggleNodeDisabled()" />
+                  <span>Disabled</span>
+                </label>
+              </div>
+
+              <button class="btn btn-danger btn-sm full-width" (click)="deleteSelectedNode()">Delete Node</button>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  `,
+  styles: [`
+    .editor-layout { display: flex; flex-direction: column; height: calc(100vh - var(--header-height)); margin: -28px; }
+
+    .editor-toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 16px; background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-primary); height: 52px; flex-shrink: 0; gap: 8px;
+    }
+    .toolbar-left, .toolbar-center, .toolbar-right { display: flex; align-items: center; gap: 8px; }
+    .toolbar-divider { width: 1px; height: 24px; background: var(--border-primary); margin: 0 4px; }
+
+    .workflow-name-input {
+      background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm);
+      padding: 4px 8px; color: var(--text-primary); font-family: inherit; font-size: 15px; font-weight: 700;
+      outline: none; min-width: 200px;
+      &:hover { border-color: var(--border-primary); }
+      &:focus { border-color: var(--accent-primary); background: var(--bg-input); }
+    }
+    .version-badge { font-size: 11px; color: var(--text-tertiary); background: var(--bg-tertiary); padding: 2px 8px; border-radius: 12px; }
+
+    .zoom-controls { display: flex; align-items: center; gap: 4px; background: var(--bg-tertiary); border-radius: var(--radius-md); padding: 2px 4px; }
+    .zoom-level { font-size: 12px; font-weight: 600; min-width: 40px; text-align: center; color: var(--text-secondary); }
+
+    .exec-status {
+      display: flex; align-items: center; gap: 6px; padding: 4px 12px;
+      border-radius: 20px; font-size: 12px; font-weight: 600;
+      &.exec-Running { background: rgba(59,130,246,.15); color: #3b82f6; }
+      &.exec-Success { background: rgba(34,197,94,.15); color: #22c55e; }
+      &.exec-Failed { background: rgba(239,68,68,.15); color: #ef4444; }
+    }
+    .spinner { width: 12px; height: 12px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .spinner-sm { width: 10px; height: 10px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .status-select { width: 120px; font-size: 12px; padding: 4px 8px; height: 32px; }
+
+    .editor-body { display: flex; flex: 1; overflow: hidden; position: relative; }
+
+    .node-palette {
+      width: 260px; background: var(--bg-secondary); border-right: 1px solid var(--border-primary);
+      overflow-y: auto; flex-shrink: 0; transition: width var(--transition-slow);
+      &.collapsed { width: 48px; }
+    }
+    .palette-header { display: flex; align-items: center; gap: 8px; padding: 12px; border-bottom: 1px solid var(--border-primary); flex-wrap: wrap; }
+    .palette-title { font-weight: 700; font-size: 14px; flex: 1; }
+    .palette-search { width: 100%; font-size: 12px; padding: 6px 10px; }
+    .palette-section { padding: 8px; }
+    .palette-section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary); padding: 8px 8px 4px; }
+    .palette-node { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: var(--radius-md); cursor: grab; transition: all var(--transition-fast); &:hover { background: var(--bg-hover); } }
+    .palette-node-icon { width: 32px; height: 32px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 14px; color: white; flex-shrink: 0; }
+    .palette-node-name { display: block; font-size: 13px; font-weight: 600; color: var(--text-primary); }
+    .palette-node-desc { display: block; font-size: 11px; color: var(--text-tertiary); }
+
+    .canvas-container { flex: 1; position: relative; overflow: hidden; background: var(--bg-primary); cursor: grab; &:active { cursor: grabbing; } }
+    .canvas-svg { width: 100%; height: 100%; }
+
+    .canvas-node { cursor: pointer; }
+    .node-shadow { fill: rgba(0,0,0,.06); transform: translate(2px, 3px); }
+    .node-body { fill: var(--bg-card); transition: stroke 0.15s ease; }
+    .canvas-node:hover .node-body { stroke: var(--border-secondary) !important; }
+    .canvas-node.selected .node-body { filter: drop-shadow(0 0 8px rgba(99,102,241,.2)); }
+    .canvas-node.disabled { opacity: 0.5; }
+
+    .node-icon-text { font-size: 16px; dominant-baseline: central; text-anchor: middle; }
+    .node-name { fill: var(--text-primary); font-size: 13px; font-weight: 600; font-family: 'Inter', sans-serif; }
+    .node-type { fill: var(--text-tertiary); font-size: 10px; font-family: 'Inter', sans-serif; }
+
+    .handle { fill: var(--bg-card); stroke: var(--border-secondary); stroke-width: 1.5; cursor: crosshair; transition: all 0.15s; &:hover { stroke: var(--accent-primary); fill: var(--accent-primary-light); } }
+    .handle-inner { fill: var(--border-secondary); pointer-events: none; }
+    .handle-inner-out { fill: var(--accent-primary); pointer-events: none; }
+    .handle-label { fill: var(--text-tertiary); font-size: 9px; font-weight: 700; font-family: 'Inter', sans-serif; }
+
+    .connection-line { fill: none; stroke: var(--border-secondary); stroke-width: 2; }
+    .connection-line-hover { fill: none; stroke: transparent; stroke-width: 12; cursor: pointer; }
+    .connection-line-hover:hover { stroke: rgba(239,68,68,.3); }
+    .connection-line.temp { stroke: var(--accent-primary); stroke-dasharray: 6 4; stroke-width: 2; opacity: 0.7; }
+
+    .canvas-empty { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: var(--text-tertiary); pointer-events: none; }
+    .empty-icon { font-size: 64px; margin-bottom: 16px; opacity: 0.3; }
+    .canvas-empty h3 { font-size: 18px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }
+    .canvas-empty p { font-size: 14px; }
+
+    .properties-panel { width: 320px; background: var(--bg-secondary); border-left: 1px solid var(--border-primary); overflow-y: auto; flex-shrink: 0; }
+    .panel-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--border-primary); }
+    .panel-title-row { display: flex; align-items: center; gap: 12px; }
+    .panel-icon { width: 36px; height: 36px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 16px; color: white; flex-shrink: 0; }
+    .panel-header h3 { font-size: 14px; font-weight: 700; }
+    .panel-subtitle { font-size: 11px; color: var(--text-tertiary); }
+    .panel-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .config-section { border: 1px solid var(--border-primary); border-radius: var(--radius-md); padding: 12px; }
+    .config-section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-tertiary); margin-bottom: 10px; }
+    .config-textarea { font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 12px; resize: vertical; }
+    .form-hint { display: block; font-size: 11px; color: var(--text-tertiary); margin-top: 3px; }
+    .toggle-row { display: flex; }
+    .toggle-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; input { accent-color: var(--accent-primary); width: 16px; height: 16px; } }
+    .full-width { width: 100%; justify-content: center; }
+
+    .cron-btn-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .cron-btn { padding: 3px 10px; font-size: 11px; border: 1px solid var(--border-primary); border-radius: 12px; background: transparent; cursor: pointer; color: var(--text-secondary); transition: all .15s; &:hover { background: var(--bg-hover); color: var(--text-primary); } }
+  `]
+})
+export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy {
+  @ViewChild('canvasContainer') canvasContainer!: ElementRef<HTMLDivElement>;
+
+  api = inject(ApiService);
+  route = inject(ActivatedRoute);
+  router = inject(Router);
+  Math = Math;
+
+  workflowId = signal<string | null>(null);
+  workflowName = 'Untitled Workflow';
+  workflowDescription = '';
+  workflowStatus = 'Draft';
+  workflowVersion = 1;
+
+  nodes = signal<CanvasNode[]>([]);
+  connections = signal<NodeConnection[]>([]);
+  selectedNode = signal<CanvasNode | null>(null);
+  executionStatus = signal<string | null>(null);
+
+  zoom = signal(1);
+  panX = signal(0);
+  panY = signal(0);
+  paletteCollapsed = signal(false);
+  nodeSearch = '';
+
+  tempConnection = signal<string | null>(null);
+  dragNode: CanvasNode | null = null;
+  dragOffsetX = 0;
+  dragOffsetY = 0;
+  isPanning = false;
+  panStartX = 0;
+  panStartY = 0;
+  connectingFrom: { node: CanvasNode; handle: string } | null = null;
+  dragNodeDef: NodeDefinition | null = null;
+
+  private pollSub?: Subscription;
+
+  cronExamples = [
+    { label: 'Every minute', cron: '* * * * *' },
+    { label: 'Every hour', cron: '0 * * * *' },
+    { label: 'Daily 9am', cron: '0 9 * * *' },
+    { label: 'Weekly Mon', cron: '0 9 * * 1' },
+  ];
+
+  ngOnInit() {
+    const id = this.route.snapshot.paramMap.get('id');
+    if (id) {
+      this.workflowId.set(id);
+      this.api.getWorkflow(id).subscribe(w => {
+        this.workflowName = w.name;
+        this.workflowDescription = w.description || '';
+        this.workflowStatus = w.status;
+        this.workflowVersion = w.version;
+        this.nodes.set(w.nodes.map(n => ({
+          ...n,
+          def: NODE_DEFINITIONS.find(d => d.type === n.type) || NODE_DEFINITIONS[0]
+        })));
+        this.connections.set(w.connections);
+      });
+    }
+  }
+
+  ngAfterViewInit() {}
+
+  ngOnDestroy() {
+    this.pollSub?.unsubscribe();
+  }
+
+  // ---- Config helpers ----
+  getConfig(node: CanvasNode, key: string, defaultVal: any = ''): any {
+    try {
+      const cfg = JSON.parse(node.configuration || '{}');
+      return cfg[key] ?? defaultVal;
+    } catch { return defaultVal; }
+  }
+
+  setConfig(node: CanvasNode, key: string, value: any) {
+    try {
+      const cfg = JSON.parse(node.configuration || '{}');
+      cfg[key] = value;
+      node.configuration = JSON.stringify(cfg);
+      this.nodes.update(ns => ns.map(n => n.id === node.id ? { ...node } : n));
+      this.selectedNode.set({ ...node });
+    } catch {}
+  }
+
+  range(n: number) { return Array.from({ length: n }, (_, i) => i); }
+  truncate(s: string, n: number) { return s.length > n ? s.slice(0, n) + '…' : s; }
+
+  // ---- Palette ----
+  getCategories(): string[] {
+    const cats = [...new Set(NODE_DEFINITIONS.map(d => d.category))];
+    if (!this.nodeSearch) return cats;
+    const term = this.nodeSearch.toLowerCase();
+    return cats.filter(c => NODE_DEFINITIONS.some(d => d.category === c && (d.name.toLowerCase().includes(term) || d.description.toLowerCase().includes(term))));
+  }
+
+  getNodesByCategory(category: string): NodeDefinition[] {
+    let defs = NODE_DEFINITIONS.filter(d => d.category === category);
+    if (this.nodeSearch) {
+      const term = this.nodeSearch.toLowerCase();
+      defs = defs.filter(d => d.name.toLowerCase().includes(term) || d.description.toLowerCase().includes(term));
+    }
+    return defs;
+  }
+
+  // ---- Canvas ----
+  getViewBox(): string {
+    const z = this.zoom();
+    const container = this.canvasContainer?.nativeElement;
+    const w = (container?.clientWidth || 1200) / z;
+    const h = (container?.clientHeight || 800) / z;
+    return `${-this.panX() / z} ${-this.panY() / z} ${w} ${h}`;
+  }
+
+  addNodeToCenter(def: NodeDefinition) {
+    const container = this.canvasContainer?.nativeElement;
+    const cx = ((container?.clientWidth || 800) / 2 - this.panX()) / this.zoom();
+    const cy = ((container?.clientHeight || 500) / 2 - this.panY()) / this.zoom();
+    this.addNode(def, cx - 100, cy - 34);
+  }
+
+  addNode(def: NodeDefinition, x: number, y: number) {
+    const node: CanvasNode = {
+      id: crypto.randomUUID(),
+      name: def.name,
+      type: def.type,
+      positionX: Math.round(x / 20) * 20,
+      positionY: Math.round(y / 20) * 20,
+      isDisabled: false,
+      executionOrder: this.nodes().length,
+      def,
+      configuration: '{}'
+    };
+    this.nodes.update(ns => [...ns, node]);
+    this.selectNode(node);
+  }
+
+  selectNode(node: CanvasNode) {
+    this.nodes.update(ns => ns.map(n => ({ ...n, selected: n.id === node.id })));
+    this.selectedNode.set(this.nodes().find(n => n.id === node.id) || null);
+  }
+
+  deselectAll() {
+    this.nodes.update(ns => ns.map(n => ({ ...n, selected: false })));
+    this.selectedNode.set(null);
+  }
+
+  deleteSelectedNode() {
+    const node = this.selectedNode();
+    if (!node) return;
+    this.nodes.update(ns => ns.filter(n => n.id !== node.id));
+    this.connections.update(cs => cs.filter(c => c.sourceNodeId !== node.id && c.targetNodeId !== node.id));
+    this.selectedNode.set(null);
+  }
+
+  deleteConnection(conn: NodeConnection) {
+    this.connections.update(cs => cs.filter(c => c.id !== conn.id));
+  }
+
+  onDragStart(event: DragEvent, def: NodeDefinition) {
+    this.dragNodeDef = def;
+    event.dataTransfer?.setData('text/plain', def.type);
+  }
+
+  onDragOver(event: DragEvent) { event.preventDefault(); }
+
+  onDrop(event: DragEvent) {
+    event.preventDefault();
+    if (!this.dragNodeDef) return;
+    const rect = this.canvasContainer.nativeElement.getBoundingClientRect();
+    const x = (event.clientX - rect.left - this.panX()) / this.zoom();
+    const y = (event.clientY - rect.top - this.panY()) / this.zoom();
+    this.addNode(this.dragNodeDef, x - 100, y - 34);
+    this.dragNodeDef = null;
+  }
+
+  onNodeMouseDown(event: MouseEvent, node: CanvasNode) {
+    event.stopPropagation();
+    if (this.connectingFrom) return;
+    this.selectNode(node);
+    this.dragNode = node;
+    this.dragOffsetX = (event.clientX - this.panX()) / this.zoom() - node.positionX;
+    this.dragOffsetY = (event.clientY - this.panY()) / this.zoom() - node.positionY;
+  }
+
+  onCanvasMouseDown(event: MouseEvent) {
+    if (this.connectingFrom) return;
+    this.deselectAll();
+    this.isPanning = true;
+    this.panStartX = event.clientX - this.panX();
+    this.panStartY = event.clientY - this.panY();
+  }
+
+  onCanvasMouseMove(event: MouseEvent) {
+    if (this.dragNode) {
+      const x = (event.clientX - this.panX()) / this.zoom() - this.dragOffsetX;
+      const y = (event.clientY - this.panY()) / this.zoom() - this.dragOffsetY;
+      this.nodes.update(ns => ns.map(n =>
+        n.id === this.dragNode!.id
+          ? { ...n, positionX: Math.round(x / 20) * 20, positionY: Math.round(y / 20) * 20 }
+          : n
+      ));
+      const updated = this.nodes().find(n => n.id === this.dragNode!.id);
+      if (updated) this.selectedNode.set(updated);
+    } else if (this.isPanning) {
+      this.panX.set(event.clientX - this.panStartX);
+      this.panY.set(event.clientY - this.panStartY);
+    } else if (this.connectingFrom) {
+      const rect = this.canvasContainer.nativeElement.getBoundingClientRect();
+      const mx = (event.clientX - rect.left - this.panX()) / this.zoom();
+      const my = (event.clientY - rect.top - this.panY()) / this.zoom();
+      const fn = this.connectingFrom.node;
+      this.tempConnection.set(this.bezierPath(fn.positionX + 200, fn.positionY + 34, mx, my));
+    }
+  }
+
+  onCanvasMouseUp() {
+    this.dragNode = null;
+    this.isPanning = false;
+    if (this.connectingFrom) {
+      this.connectingFrom = null;
+      this.tempConnection.set(null);
+    }
+  }
+
+  onHandleMouseDown(event: MouseEvent, node: CanvasNode, handle: string) {
+    event.stopPropagation();
+    this.connectingFrom = { node, handle };
+  }
+
+  onHandleMouseUp(node: CanvasNode, handle: string) {
+    if (this.connectingFrom && this.connectingFrom.node.id !== node.id) {
+      const conn: NodeConnection = {
+        id: crypto.randomUUID(),
+        sourceNodeId: this.connectingFrom.node.id,
+        targetNodeId: node.id,
+        sourceHandle: this.connectingFrom.handle,
+        targetHandle: handle
+      };
+      if (!this.connections().some(c => c.sourceNodeId === conn.sourceNodeId && c.targetNodeId === conn.targetNodeId && c.sourceHandle === conn.sourceHandle)) {
+        this.connections.update(cs => [...cs, conn]);
+      }
+    }
+    this.connectingFrom = null;
+    this.tempConnection.set(null);
+  }
+
+  onWheel(event: WheelEvent) {
+    event.preventDefault();
+    this.zoom.update(z => Math.max(0.2, Math.min(2.5, z + (event.deltaY > 0 ? -0.05 : 0.05))));
+  }
+  zoomIn() { this.zoom.update(z => Math.min(2.5, z + 0.1)); }
+  zoomOut() { this.zoom.update(z => Math.max(0.2, z - 0.1)); }
+  fitToScreen() { this.zoom.set(1); this.panX.set(0); this.panY.set(0); }
+
+  getConnectionPath(conn: NodeConnection): string {
+    const source = this.nodes().find(n => n.id === conn.sourceNodeId);
+    const target = this.nodes().find(n => n.id === conn.targetNodeId);
+    if (!source || !target) return '';
+    return this.bezierPath(source.positionX + 200, source.positionY + 34, target.positionX, target.positionY + 34);
+  }
+
+  private bezierPath(sx: number, sy: number, tx: number, ty: number): string {
+    const dx = Math.abs(tx - sx) * 0.5;
+    return `M${sx},${sy} C${sx + dx},${sy} ${tx - dx},${ty} ${tx},${ty}`;
+  }
+
+  saveWorkflow() {
+    const data = {
+      name: this.workflowName,
+      description: this.workflowDescription,
+      status: this.workflowStatus,
+      triggerType: this.nodes().some(n => n.type === 'Webhook') ? 'Webhook'
+                 : this.nodes().some(n => n.type === 'Schedule') ? 'Schedule' : 'Manual',
+      cronExpression: this.getCronExpression(),
+      nodes: this.nodes().map(n => ({
+        id: n.id, name: n.name, label: n.label, type: n.type,
+        positionX: n.positionX, positionY: n.positionY,
+        configuration: n.configuration, isDisabled: n.isDisabled,
+        notes: n.notes, executionOrder: n.executionOrder, credentialId: n.credentialId
+      })),
+      connections: this.connections().map(c => ({
+        id: c.id, sourceNodeId: c.sourceNodeId, targetNodeId: c.targetNodeId,
+        sourceHandle: c.sourceHandle || 'output', targetHandle: c.targetHandle || 'input',
+        label: c.label, condition: c.condition
+      }))
+    };
+
+    if (this.workflowId()) {
+      this.api.updateWorkflow(this.workflowId()!, data).subscribe();
+    } else {
+      this.api.createWorkflow(data).subscribe((result: any) => {
+        this.workflowId.set(result.id);
+        this.router.navigate(['/editor', result.id], { replaceUrl: true });
+      });
+    }
+  }
+
+  getCronExpression(): string | null {
+    const scheduleNode = this.nodes().find(n => n.type === 'Schedule');
+    if (scheduleNode) {
+      try {
+        return JSON.parse(scheduleNode.configuration || '{}')['cron'] || null;
+      } catch { return null; }
+    }
+    return null;
+  }
+
+  executeWorkflow() {
+    if (!this.workflowId()) { this.saveWorkflow(); return; }
+    this.executionStatus.set('Running');
+    this.nodes.update(ns => ns.map(n => ({ ...n, execStatus: undefined })));
+
+    this.api.runWorkflow(this.workflowId()!).subscribe({
+      next: (ex: WorkflowExecution) => {
+        this.executionStatus.set(ex.status);
+        if (ex.nodeExecutions) {
+          this.nodes.update(ns => ns.map(n => {
+            const ne = ex.nodeExecutions?.find(ne => ne.nodeId === n.id);
+            return ne ? { ...n, execStatus: ne.status.toLowerCase() as any } : n;
+          }));
+        }
+        setTimeout(() => this.executionStatus.set(null), 5000);
+      },
+      error: () => {
+        this.executionStatus.set('Failed');
+        setTimeout(() => this.executionStatus.set(null), 5000);
+      }
+    });
+  }
+
+  exportWorkflow() {
+    const data = {
+      name: this.workflowName,
+      description: this.workflowDescription,
+      nodes: this.nodes().map(({ def: _def, selected: _sel, execStatus: _exec, ...n }) => n),
+      connections: this.connections()
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${this.workflowName.replace(/\s+/g, '_')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  importWorkflow(event: Event) {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target?.result as string);
+        if (data.name) this.workflowName = data.name;
+        if (data.description) this.workflowDescription = data.description;
+        if (data.nodes) {
+          this.nodes.set(data.nodes.map((n: any) => ({
+            ...n,
+            def: NODE_DEFINITIONS.find(d => d.type === n.type) || NODE_DEFINITIONS[0]
+          })));
+        }
+        if (data.connections) this.connections.set(data.connections);
+      } catch {
+        alert('Invalid workflow JSON file');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  togglePalette() { this.paletteCollapsed.set(!this.paletteCollapsed()); }
+
+  updateNodeProp(prop: string, event: Event) {
+    const value = (event.target as HTMLInputElement).value;
+    const node = this.selectedNode();
+    if (!node) return;
+    (node as any)[prop] = value;
+    this.nodes.update(ns => ns.map(n => n.id === node.id ? { ...node } : n));
+  }
+
+  toggleNodeDisabled() {
+    const node = this.selectedNode();
+    if (!node) return;
+    node.isDisabled = !node.isDisabled;
+    this.nodes.update(ns => ns.map(n => n.id === node.id ? { ...node } : n));
+    this.selectedNode.set({ ...node });
+  }
+}

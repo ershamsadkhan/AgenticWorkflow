@@ -1,0 +1,33 @@
+namespace FlowForge.Core.Enums;
+
+public enum NodeType
+{
+    // Triggers
+    Trigger = 0,
+    Webhook = 8,
+    Schedule = 9,
+    // Actions
+    HttpRequest = 5,
+    Code = 6,
+    Email = 7,
+    SqlQuery = 20,
+    Slack = 21,
+    // AI
+    AiChat = 30,
+    AiAgent = 31,
+    TextSummarizer = 32,
+    // Logic
+    Condition = 2,
+    Switch = 14,
+    Loop = 3,
+    Delay = 4,
+    // Data
+    Transform = 10,
+    Filter = 11,
+    Merge = 12,
+    Split = 13,
+    Set = 22,
+    // Advanced
+    SubWorkflow = 15,
+    Action = 1,
+}
