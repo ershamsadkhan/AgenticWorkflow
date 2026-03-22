@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
     <ProjectReference Include="..\FlowForge.Core\FlowForge.Core.csproj" />
     <ProjectReference Include="..\FlowForge.Infrastructure\FlowForge.Infrastructure.csproj" />
@@ -17,5 +17,6 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>1db6cc91-c4fa-45e4-bfc0-82d6270f2d66</UserSecretsId>
   </PropertyGroup>
 </Project>

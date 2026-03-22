@@ -392,6 +392,13 @@ interface CanvasNode extends WorkflowNode {
                       </div>
                     </div>
                   }
+                  @case ('ChatMessage') {
+                    <div class="form-group">
+                      <div class="info-box">
+                        <span class="form-hint">This trigger receives messages from the chat input window at the bottom. Output will contain: message, timestamp, and sender fields.</span>
+                      </div>
+                    </div>
+                  }
                   @case ('SqlQuery') {
                     <div class="form-group">
                       <label>Operation</label>
@@ -466,6 +473,34 @@ interface CanvasNode extends WorkflowNode {
           </div>
         }
       </div>
+
+      <!-- Chat Panel (only show if workflow has ChatMessage trigger) -->
+      @if (hasChatMessageTrigger()) {
+        <div class="chat-panel">
+          <div class="chat-header">
+            <h3>💬 Chat Input</h3>
+            <button class="btn-icon chat-minimize" (click)="toggleChatPanel()">_</button>
+          </div>
+          <div class="chat-messages">
+            @for (msg of chatMessages(); track $index) {
+              <div class="chat-message" [class.user]="msg.sender === 'user'">
+                <div class="message-sender">{{ msg.sender === 'user' ? 'You' : 'System' }}</div>
+                <div class="message-content">{{ msg.message }}</div>
+                <div class="message-time">{{ msg.timestamp | date:'short' }}</div>
+              </div>
+            }
+          </div>
+          <div class="chat-input-area">
+            <input class="chat-input" 
+                   [(ngModel)]="chatInputValue" 
+                   (keyup.enter)="sendChatMessage()"
+                   placeholder="Type your message..." />
+            <button class="btn btn-primary btn-sm" (click)="sendChatMessage()" [disabled]="!chatInputValue.trim()">
+              ▶ Send
+            </button>
+          </div>
+        </div>
+      }
     </div>
   `,
   styles: [`
@@ -567,6 +602,23 @@ interface CanvasNode extends WorkflowNode {
 
     .cron-btn-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .cron-btn { padding: 3px 10px; font-size: 11px; border: 1px solid var(--border-primary); border-radius: 12px; background: transparent; cursor: pointer; color: var(--text-secondary); transition: all .15s; &:hover { background: var(--bg-hover); color: var(--text-primary); } }
+
+    .chat-panel { display: flex; flex-direction: column; width: 100%; height: 280px; background: var(--bg-secondary); border-top: 1px solid var(--border-primary); flex-shrink: 0; }
+    .chat-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border-primary); background: var(--bg-tertiary); }
+    .chat-header h3 { font-size: 13px; font-weight: 600; margin: 0; color: var(--text-primary); }
+    .chat-minimize { font-size: 16px; cursor: pointer; }
+    .chat-messages { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+    .chat-message { display: flex; flex-direction: column; padding: 8px 12px; border-radius: var(--radius-md); background: var(--bg-tertiary); }
+    .chat-message.user { align-self: flex-end; background: var(--accent-primary); color: white; max-width: 70%; }
+    .chat-message.user .message-sender { color: rgba(255,255,255,0.8); }
+    .chat-message.user .message-content { color: white; }
+    .chat-message.user .message-time { color: rgba(255,255,255,0.6); }
+    .message-sender { font-size: 10px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 2px; }
+    .message-content { font-size: 12px; color: var(--text-primary); line-height: 1.4; }
+    .message-time { font-size: 9px; color: var(--text-tertiary); margin-top: 2px; }
+    .chat-input-area { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border-primary); background: var(--bg-secondary); flex-shrink: 0; }
+    .chat-input { flex: 1; padding: 8px 12px; border: 1px solid var(--border-primary); border-radius: var(--radius-md); background: var(--bg-input); color: var(--text-primary); font-size: 12px; outline: none; &:focus { border-color: var(--accent-primary); } }
+    .info-box { padding: 8px 12px; background: var(--bg-tertiary); border-left: 3px solid var(--accent-primary); border-radius: var(--radius-sm); }
   `]
 })
 export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy {
@@ -603,6 +655,11 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
   panStartY = 0;
   connectingFrom: { node: CanvasNode; handle: string } | null = null;
   dragNodeDef: NodeDefinition | null = null;
+
+  // Chat panel properties
+  chatMessages = signal<Array<{ sender: string; message: string; timestamp: Date }>>([]);
+  chatInputValue = '';
+  chatPanelOpen = signal(true);
 
   private pollSub?: Subscription;
 
@@ -956,5 +1013,63 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
     node.isDisabled = !node.isDisabled;
     this.nodes.update(ns => ns.map(n => n.id === node.id ? { ...node } : n));
     this.selectedNode.set({ ...node });
+  }
+
+  // Chat panel methods
+  hasChatMessageTrigger(): boolean {
+    return this.nodes().some(n => n.type === 'ChatMessage');
+  }
+
+  toggleChatPanel() {
+    this.chatPanelOpen.set(!this.chatPanelOpen());
+  }
+
+  sendChatMessage() {
+    if (!this.chatInputValue.trim()) return;
+
+    // Add user message to chat
+    const userMessage = {
+      sender: 'user',
+      message: this.chatInputValue,
+      timestamp: new Date()
+    };
+    this.chatMessages.update(msgs => [...msgs, userMessage]);
+
+    // Find ChatMessage trigger node
+    const chatTriggerNode = this.nodes().find(n => n.type === 'ChatMessage');
+    if (chatTriggerNode) {
+      // Create message data to pass through workflow
+      const messageData = {
+        message: this.chatInputValue,
+        timestamp: new Date().toISOString(),
+        sender: 'user'
+      };
+
+      // Execute workflow with chat message as trigger data
+      if (this.workflowId()) {
+        this.api.runWorkflow(this.workflowId()!, messageData).subscribe({
+          next: (result: any) => {
+            // Add system response message
+            const systemMessage = {
+              sender: 'system',
+              message: result.resultData ? JSON.stringify(result.resultData) : 'Workflow executed successfully',
+              timestamp: new Date()
+            };
+            this.chatMessages.update(msgs => [...msgs, systemMessage]);
+          },
+          error: (err) => {
+            const errorMessage = {
+              sender: 'system',
+              message: `Error: ${err.error?.message || 'Workflow execution failed'}`,
+              timestamp: new Date()
+            };
+            this.chatMessages.update(msgs => [...msgs, errorMessage]);
+          }
+        });
+      }
+    }
+
+    // Clear input
+    this.chatInputValue = '';
   }
 }

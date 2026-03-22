@@ -48,8 +48,8 @@ export class ApiService {
   getExecution(id: string): Observable<WorkflowExecution> {
     return this.http.get<WorkflowExecution>(`${this.baseUrl}/executions/${id}`);
   }
-  runWorkflow(workflowId: string): Observable<WorkflowExecution> {
-    return this.http.post<WorkflowExecution>(`${this.baseUrl}/executions/run/${workflowId}`, {});
+  runWorkflow(workflowId: string, triggerData?: any): Observable<WorkflowExecution> {
+    return this.http.post<WorkflowExecution>(`${this.baseUrl}/executions/run/${workflowId}`, triggerData ? { triggerData } : {});
   }
   deleteExecution(id: string): Observable<any> {
     return this.http.delete(`${this.baseUrl}/executions/${id}`);

@@ -6,6 +6,7 @@ public enum NodeType
     Trigger = 0,
     Webhook = 8,
     Schedule = 9,
+    ChatMessage = 40,
     // Actions
     HttpRequest = 5,
     Code = 6,

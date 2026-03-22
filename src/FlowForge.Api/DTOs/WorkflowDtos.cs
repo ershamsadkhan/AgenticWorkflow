@@ -44,3 +44,5 @@ public record NodeExecutionDto(
 
 public record CredentialDto(Guid Id, string Name, string Type, DateTime CreatedAt, DateTime UpdatedAt);
 public record CredentialCreateDto(string Name, string Type, string Data);
+
+public record ExecutionRequest(object? TriggerData = null);

@@ -62,6 +62,7 @@ builder.Services.AddScoped<ISchedulerService, SchedulerService>();
 builder.Services.AddScoped<INodeExecutor, ManualTriggerExecutor>();
 builder.Services.AddScoped<INodeExecutor, WebhookTriggerExecutor>();
 builder.Services.AddScoped<INodeExecutor, ScheduleTriggerExecutor>();
+builder.Services.AddScoped<INodeExecutor, ChatMessageTriggerExecutor>();
 builder.Services.AddScoped<INodeExecutor, HttpRequestExecutor>();
 builder.Services.AddScoped<INodeExecutor, SetExecutor>();
 builder.Services.AddScoped<INodeExecutor, FilterExecutor>();

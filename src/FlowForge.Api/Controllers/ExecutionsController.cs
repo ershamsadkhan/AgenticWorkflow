@@ -4,6 +4,7 @@ using FlowForge.Core.Entities;
 using FlowForge.Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json.Linq;
 
 namespace FlowForge.Api.Controllers;
 
@@ -45,9 +46,12 @@ public class ExecutionsController : ControllerBase
     }
 
     [HttpPost("run/{workflowId}")]
-    public async Task<ActionResult<ExecutionDto>> RunWorkflow(Guid workflowId)
+    public async Task<ActionResult<ExecutionDto>> RunWorkflow(Guid workflowId, [FromBody] ExecutionRequest? request = null)
     {
-        var execution = await _engine.ExecuteAsync(workflowId, "manual");
+        var triggerData = request?.TriggerData != null
+            ? new List<JObject> { JObject.FromObject(request.TriggerData) }
+            : null;
+        var execution = await _engine.ExecuteAsync(workflowId, "manual", triggerData);
         return Ok(MapExecution(execution));
     }
 

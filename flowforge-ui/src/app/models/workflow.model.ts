@@ -18,7 +18,7 @@ export type WorkflowStatus = 'Draft' | 'Active' | 'Inactive' | 'Error';
 export type TriggerType = 'Manual' | 'Webhook' | 'Schedule' | 'Event';
 export type ExecutionStatus = 'Pending' | 'Running' | 'Success' | 'Failed' | 'Cancelled';
 export type NodeType =
-  | 'Trigger' | 'Webhook' | 'Schedule'
+  | 'Trigger' | 'Webhook' | 'Schedule' | 'ChatMessage'
   | 'HttpRequest' | 'Code' | 'Email' | 'SqlQuery' | 'Slack'
   | 'AiChat' | 'AiAgent' | 'TextSummarizer'
   | 'Condition' | 'Switch' | 'Loop' | 'Delay'
@@ -149,6 +149,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   { type: 'Trigger', name: 'Manual Trigger', icon: '▶', color: '#22c55e', category: 'Triggers', description: 'Start workflow manually', inputs: 0, outputs: 1 },
   { type: 'Webhook', name: 'Webhook', icon: '🔗', color: '#8b5cf6', category: 'Triggers', description: 'Listen for HTTP requests', inputs: 0, outputs: 1 },
   { type: 'Schedule', name: 'Schedule', icon: '⏱', color: '#f59e0b', category: 'Triggers', description: 'Run on a cron schedule', inputs: 0, outputs: 1 },
+  { type: 'ChatMessage', name: 'When Chat Message Received', icon: '💬', color: '#ec4899', category: 'Triggers', description: 'Receive user messages from chat input', inputs: 0, outputs: 1 },
   // Actions
   { type: 'HttpRequest', name: 'HTTP Request', icon: '🌐', color: '#3b82f6', category: 'Actions', description: 'Make HTTP requests to any URL', inputs: 1, outputs: 1 },
   { type: 'Code', name: 'Code', icon: '{ }', color: '#6366f1', category: 'Actions', description: 'Run custom JavaScript code', inputs: 1, outputs: 1 },
