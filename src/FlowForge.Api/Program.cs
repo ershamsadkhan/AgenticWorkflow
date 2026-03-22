@@ -79,6 +79,9 @@ builder.Services.AddScoped<INodeExecutor, SlackExecutor>();
 builder.Services.AddScoped<INodeExecutor, AiChatExecutor>();
 builder.Services.AddScoped<INodeExecutor, AiAgentExecutor>();
 builder.Services.AddScoped<INodeExecutor, TextSummarizerExecutor>();
+builder.Services.AddScoped<INodeExecutor, ChatModelExecutor>();
+builder.Services.AddScoped<INodeExecutor, ToolNodeExecutor>();
+builder.Services.AddScoped<INodeExecutor, MemoryNodeExecutor>();
 builder.Services.AddScoped<INodeExecutor, SubWorkflowExecutor>();
 
 // JWT

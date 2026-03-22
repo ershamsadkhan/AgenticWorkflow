@@ -112,7 +112,9 @@ interface CanvasNode extends WorkflowNode {
             <!-- Connections -->
             @for (conn of connections(); track conn.id) {
               <g class="connection-group">
-                <path [attr.d]="getConnectionPath(conn)" class="connection-line"
+                <path [attr.d]="getConnectionPath(conn)" 
+                      class="connection-line"
+                      [style.stroke]="getConnectionColor(conn)"
                       marker-end="url(#arrowhead)" />
                 <path [attr.d]="getConnectionPath(conn)" class="connection-line-hover"
                       (click)="deleteConnection(conn)" />
@@ -132,12 +134,12 @@ interface CanvasNode extends WorkflowNode {
                  [class.disabled]="node.isDisabled"
                  (mousedown)="onNodeMouseDown($event, node)">
                 <!-- Node shadow + body -->
-                <rect width="200" height="68" rx="12" class="node-shadow" />
-                <rect width="200" height="68" rx="12" class="node-body"
+                <rect width="200" [attr.height]="node.type === 'AiAgent' ? 120 : (node.def.inputs > 1 ? 68 + (node.def.inputs - 1) * 14 : 68)" rx="12" class="node-shadow" />
+                <rect width="200" [attr.height]="node.type === 'AiAgent' ? 120 : (node.def.inputs > 1 ? 68 + (node.def.inputs - 1) * 14 : 68)" rx="12" class="node-body"
                       [style.stroke]="node.selected ? 'var(--accent-primary)' : node.execStatus === 'success' ? '#22c55e' : node.execStatus === 'failed' ? '#ef4444' : node.execStatus === 'running' ? '#3b82f6' : 'var(--border-primary)'"
                       [style.stroke-width]="node.execStatus ? '2.5' : '1.5'" />
                 <!-- Color bar -->
-                <rect width="4" height="68" rx="2" [attr.fill]="node.def.color" />
+                <rect width="4" [attr.height]="node.type === 'AiAgent' ? 120 : (node.def.inputs > 1 ? 68 + (node.def.inputs - 1) * 14 : 68)" rx="2" [attr.fill]="node.def.color" />
                 <!-- Icon bg -->
                 <rect x="12" y="14" width="36" height="36" rx="8" [attr.fill]="node.def.color" opacity="0.15" />
                 <text x="30" y="38" text-anchor="middle" class="node-icon-text" [attr.fill]="node.def.color">{{ node.def.icon }}</text>
@@ -152,11 +154,20 @@ interface CanvasNode extends WorkflowNode {
                     {{ node.execStatus === 'success' ? '✓' : node.execStatus === 'failed' ? '✕' : '⟳' }}
                   </text>
                 }
-                <!-- Input handle -->
-                @if (node.def.inputs > 0) {
+                <!-- Input handle(s) -->
+                @if (node.def.inputs === 1) {
                   <circle cx="0" cy="34" r="6" class="handle input-handle"
                           (mouseup)="onHandleMouseUp(node, 'input')" />
                   <circle cx="0" cy="34" r="3" class="handle-inner" />
+                } @else if (node.def.inputs > 1 && node.type !== 'AiAgent') {
+                  @for (i of range(node.def.inputs); track i) {
+                    <!-- Regular nodes: standard input handles -->
+                    <g class="input-group">
+                      <circle cx="0" [attr.cy]="14 + i * 14" r="5" class="handle input-handle"
+                              (mouseup)="onHandleMouseUp(node, 'input' + i)" />
+                      <circle cx="0" [attr.cy]="14 + i * 14" r="2.5" class="handle-inner" />
+                    </g>
+                  }
                 }
                 <!-- Output handle(s) -->
                 @if (node.def.outputs === 1) {
@@ -175,6 +186,53 @@ interface CanvasNode extends WorkflowNode {
                     <circle [attr.cx]="200" [attr.cy]="14 + i * 14" r="4" class="handle output-handle"
                             (mousedown)="onHandleMouseDown($event, node, 'output' + i)" />
                   }
+                }
+                
+                <!-- AI Agent bottom input connectors -->
+                @if (node.type === 'AiAgent') {
+                  <g class="agent-inputs">
+                    <!-- Chat Model connector -->
+                    <g class="agent-input-group">
+                      <circle cx="38" cy="100" r="4" class="handle input-handle"
+                              [style.stroke]="'#06b6d4'"
+                              [style.fill]="'#06b6d440'"
+                              (mouseup)="onHandleMouseUp(node, 'input0')" />
+                      <circle cx="38" cy="100" r="1.5" class="handle-inner" [style.fill]="'#06b6d4'" />
+                      <!-- Label -->
+                      <text x="38" y="113" text-anchor="middle" font-size="11" font-weight="600" fill="#06b6d4" class="label-text">Chat Model</text>
+                      <!-- Plus button -->
+                      <circle cx="38" cy="125" r="5" class="add-btn" fill="#06b6d420" stroke="#06b6d4" stroke-width="1" />
+                      <text x="38" y="129" text-anchor="middle" font-size="10" font-weight="700" fill="#06b6d4" class="plus-text">+</text>
+                    </g>
+
+                    <!-- Memory connector -->
+                    <g class="agent-input-group">
+                      <circle cx="100" cy="100" r="4" class="handle input-handle"
+                              [style.stroke]="'#8b5cf6'"
+                              [style.fill]="'#8b5cf640'"
+                              (mouseup)="onHandleMouseUp(node, 'input1')" />
+                      <circle cx="100" cy="100" r="1.5" class="handle-inner" [style.fill]="'#8b5cf6'" />
+                      <!-- Label -->
+                      <text x="100" y="113" text-anchor="middle" font-size="11" font-weight="600" fill="#8b5cf6" class="label-text">Memory</text>
+                      <!-- Plus button -->
+                      <circle cx="100" cy="125" r="5" class="add-btn" fill="#8b5cf640" stroke="#8b5cf6" stroke-width="1" />
+                      <text x="100" y="129" text-anchor="middle" font-size="10" font-weight="700" fill="#8b5cf6" class="plus-text">+</text>
+                    </g>
+
+                    <!-- Tool connector -->
+                    <g class="agent-input-group">
+                      <circle cx="162" cy="100" r="4" class="handle input-handle"
+                              [style.stroke]="'#f97316'"
+                              [style.fill]="'#f9731640'"
+                              (mouseup)="onHandleMouseUp(node, 'input2')" />
+                      <circle cx="162" cy="100" r="1.5" class="handle-inner" [style.fill]="'#f97316'" />
+                      <!-- Label -->
+                      <text x="162" y="113" text-anchor="middle" font-size="11" font-weight="600" fill="#f97316" class="label-text">Tool</text>
+                      <!-- Plus button -->
+                      <circle cx="162" cy="125" r="5" class="add-btn" fill="#f9731640" stroke="#f97316" stroke-width="1" />
+                      <text x="162" y="129" text-anchor="middle" font-size="10" font-weight="700" fill="#f97316" class="plus-text">+</text>
+                    </g>
+                  </g>
                 }
               </g>
             }
@@ -332,25 +390,128 @@ interface CanvasNode extends WorkflowNode {
                   }
                   @case ('AiAgent') {
                     <div class="form-group">
-                      <label>Model</label>
-                      <select class="input" [value]="getConfig(sn, 'model', 'gpt-4o')"
-                              (change)="setConfig(sn, 'model', $any($event.target).value)">
-                        <option value="gpt-4o">GPT-4o (recommended)</option>
-                        <option value="gpt-4o-mini">GPT-4o Mini</option>
-                      </select>
-                    </div>
-                    <div class="form-group">
                       <label>System Instructions</label>
                       <textarea class="input config-textarea" rows="3"
-                                [value]="getConfig(sn, 'systemPrompt', 'You are an AI agent.')"
+                                [value]="getConfig(sn, 'systemPrompt', 'You are an intelligent AI agent with access to models, memory, and tools.')"
                                 (input)="setConfig(sn, 'systemPrompt', $any($event.target).value)"></textarea>
                     </div>
                     <div class="form-group">
-                      <label>Task</label>
+                      <label>Task/Objective</label>
                       <textarea class="input config-textarea" rows="3"
                                 [value]="getConfig(sn, 'task', '')"
                                 (input)="setConfig(sn, 'task', $any($event.target).value)"
-                                placeholder="Analyze the data and extract key insights..."></textarea>
+                                placeholder="Define the agent's task or objective..."></textarea>
+                    </div>
+                    <div class="form-group">
+                      <label>Max Iterations</label>
+                      <input class="input" type="number" [value]="getConfig(sn, 'maxIterations', 10)"
+                             (input)="setConfig(sn, 'maxIterations', +$any($event.target).value)" />
+                      <span class="form-hint">Maximum number of tool calls before stopping</span>
+                    </div>
+                    <div class="info-box" style="border-left: 3px solid #06b6d4;">
+                      <span class="form-hint"><strong style="color: #06b6d4;">📥 Input Connections</strong></span><br>
+                      <span class="form-hint" style="font-size: 11px;">
+                        🔵 <strong>Data:</strong> Input from triggers or previous nodes<br>
+                        🔵 <strong>Model:</strong> Connect 1 Chat Model node<br>
+                        🟣 <strong>Memory:</strong> Connect 1 Memory node (Redis, Vector DB)<br>
+                        🟠 <strong>Tools:</strong> Connect multiple Tool nodes
+                      </span>
+                    </div>
+                  }
+                  @case ('ChatModel') {
+                    <div class="form-group">
+                      <label>Model Provider</label>
+                      <select class="input" [value]="getConfig(sn, 'provider', 'openai')"
+                              (change)="setConfig(sn, 'provider', $any($event.target).value)">
+                        <option value="openai">OpenAI (GPT-4, GPT-3.5)</option>
+                        <option value="anthropic">Anthropic (Claude)</option>
+                        <option value="google">Google (Gemini)</option>
+                        <option value="azure">Azure OpenAI</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>Model Name</label>
+                      <select class="input" [value]="getConfig(sn, 'modelName', 'gpt-4o')"
+                              (change)="setConfig(sn, 'modelName', $any($event.target).value)">
+                        <option value="gpt-4o">GPT-4o (recommended)</option>
+                        <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                        <option value="claude-3-opus">Claude 3 Opus</option>
+                        <option value="claude-3-sonnet">Claude 3 Sonnet</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>Temperature</label>
+                      <input class="input" type="number" step="0.1" min="0" max="2"
+                             [value]="getConfig(sn, 'temperature', 0.7)"
+                             (input)="setConfig(sn, 'temperature', +$any($event.target).value)" />
+                      <span class="form-hint">0 = deterministic, 1 = creative, higher = more random</span>
+                    </div>
+                    <div class="form-group">
+                      <label>Max Tokens</label>
+                      <input class="input" type="number" [value]="getConfig(sn, 'maxTokens', 2000)"
+                             (input)="setConfig(sn, 'maxTokens', +$any($event.target).value)" />
+                    </div>
+                  }
+                  @case ('ToolNode') {
+                    <div class="form-group">
+                      <label>Tool Name</label>
+                      <input class="input" [value]="getConfig(sn, 'toolName', '')"
+                             (input)="setConfig(sn, 'toolName', $any($event.target).value)"
+                             placeholder="e.g., web_search, calculate, send_email" />
+                    </div>
+                    <div class="form-group">
+                      <label>Tool Description</label>
+                      <textarea class="input config-textarea" rows="2"
+                                [value]="getConfig(sn, 'description', '')"
+                                (input)="setConfig(sn, 'description', $any($event.target).value)"
+                                placeholder="What does this tool do?"></textarea>
+                    </div>
+                    <div class="form-group">
+                      <label>Input Parameters (JSON)</label>
+                      <textarea class="input config-textarea" rows="3"
+                                [value]="getConfig(sn, 'parameters', '{}')"
+                                (input)="setConfig(sn, 'parameters', $any($event.target).value)"
+                                placeholder='{"query": "string", "limit": "number"}'></textarea>
+                    </div>
+                    <div class="form-group">
+                      <label>Function/Handler ID</label>
+                      <input class="input" [value]="getConfig(sn, 'handlerId', '')"
+                             (input)="setConfig(sn, 'handlerId', $any($event.target).value)"
+                             placeholder="Reference to handler (Code node, HTTP endpoint, etc)" />
+                    </div>
+                  }
+                  @case ('MemoryNode') {
+                    <div class="form-group">
+                      <label>Memory Type</label>
+                      <select class="input" [value]="getConfig(sn, 'memoryType', 'redis')"
+                              (change)="setConfig(sn, 'memoryType', $any($event.target).value)">
+                        <option value="redis">Redis (Key-Value Cache)</option>
+                        <option value="vectordb">Vector DB (Semantic Search)</option>
+                        <option value="longterm">Long-term Memory (SQL)</option>
+                        <option value="shortterm">Short-term Memory (Session)</option>
+                        <option value="custom">Custom</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>Connection String / Config</label>
+                      <input class="input" [value]="getConfig(sn, 'connectionString', '')"
+                             (input)="setConfig(sn, 'connectionString', $any($event.target).value)"
+                             placeholder="redis://localhost:6379 or connection details" />
+                    </div>
+                    <div class="form-group">
+                      <label>Memory Key Prefix</label>
+                      <input class="input" [value]="getConfig(sn, 'keyPrefix', 'agent_')"
+                             (input)="setConfig(sn, 'keyPrefix', $any($event.target).value)"
+                             placeholder="agent_" />
+                      <span class="form-hint">Prefix for memory keys to avoid conflicts</span>
+                    </div>
+                    <div class="form-group">
+                      <label>TTL (seconds)</label>
+                      <input class="input" type="number" [value]="getConfig(sn, 'ttl', 3600)"
+                             (input)="setConfig(sn, 'ttl', +$any($event.target).value)"
+                             placeholder="3600" />
+                      <span class="form-hint">Time to live for memory entries (0 = no expiry)</span>
                     </div>
                   }
                   @case ('TextSummarizer') {
@@ -627,6 +788,12 @@ interface CanvasNode extends WorkflowNode {
     .handle-inner { fill: var(--border-secondary); pointer-events: none; }
     .handle-inner-out { fill: var(--accent-primary); pointer-events: none; }
     .handle-label { fill: var(--text-tertiary); font-size: 9px; font-weight: 700; font-family: 'Inter', sans-serif; }
+    .agent-inputs { pointer-events: auto; }
+    .agent-input-group { cursor: pointer; }
+    .agent-input-group .handle { cursor: crosshair; }
+    .agent-input-group .add-btn { cursor: pointer; transition: all 0.15s; &:hover { fill: rgba(59,130,246,.2); } }
+    .plus-text { pointer-events: none; font-family: 'Inter', sans-serif; }
+    .label-text { font-family: 'Inter', sans-serif; }
 
     .connection-line { fill: none; stroke: var(--border-secondary); stroke-width: 2; }
     .connection-line-hover { fill: none; stroke: transparent; stroke-width: 12; cursor: pointer; }
@@ -789,6 +956,28 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
 
   range(n: number) { return Array.from({ length: n }, (_, i) => i); }
   truncate(s: string, n: number) { return s.length > n ? s.slice(0, n) + '…' : s; }
+  
+  getInputLabel(index: number): string {
+    const labels = ['Data', 'Model', 'Memory', 'Tools'];
+    return labels[index] || `Input ${index}`;
+  }
+
+  getInputColor(index: number): string {
+    const colors: { [key: number]: string } = {
+      0: '#06b6d4', // Data - cyan
+      1: '#3b82f6', // Model - blue
+      2: '#8b5cf6', // Memory - purple
+      3: '#f97316'  // Tools - orange
+    };
+    return colors[index] || '#6b7280';
+  }
+
+  getConnectionColor(conn: NodeConnection): string {
+    // Extract input index from targetHandle (e.g., "input0" -> 0, "input1" -> 1)
+    const match = conn.targetHandle?.match(/input(\d+)/);
+    const inputIndex = match ? parseInt(match[1]) : 0;
+    return this.getInputColor(inputIndex);
+  }
 
   // ---- Palette ----
   getCategories(): string[] {
@@ -854,7 +1043,6 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
           outputData: nodeExecution.outputData ? this.formatJson(nodeExecution.outputData) : null,
           errorMessage: nodeExecution.errorMessage
         });
-        this.bottomPanelTab.set('logs');
       }
     }
   }
@@ -976,7 +1164,21 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
     const source = this.nodes().find(n => n.id === conn.sourceNodeId);
     const target = this.nodes().find(n => n.id === conn.targetNodeId);
     if (!source || !target) return '';
-    return this.bezierPath(source.positionX + 200, source.positionY + 34, target.positionX, target.positionY + 34);
+
+    // Get target handle position
+    let targetX = target.positionX;
+    let targetY = target.positionY + 34;
+
+    // For AI Agent nodes with bottom inputs, calculate the position
+    if (target.type === 'AiAgent') {
+      const match = conn.targetHandle?.match(/input(\d+)/);
+      const inputIndex = match ? parseInt(match[1]) : 0;
+      const positions = [38, 100, 162]; // x positions for Chat Model, Memory, Tool
+      targetX = target.positionX + (positions[inputIndex] || 38);
+      targetY = target.positionY + 100;
+    }
+
+    return this.bezierPath(source.positionX + 200, source.positionY + 34, targetX, targetY);
   }
 
   private bezierPath(sx: number, sy: number, tx: number, ty: number): string {

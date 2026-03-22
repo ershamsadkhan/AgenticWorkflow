@@ -20,7 +20,7 @@ export type ExecutionStatus = 'Pending' | 'Running' | 'Success' | 'Failed' | 'Ca
 export type NodeType =
   | 'Trigger' | 'Webhook' | 'Schedule' | 'ChatMessage'
   | 'HttpRequest' | 'Code' | 'Email' | 'SqlQuery' | 'Slack'
-  | 'AiChat' | 'AiAgent' | 'TextSummarizer'
+  | 'AiChat' | 'AiAgent' | 'TextSummarizer' | 'ChatModel' | 'ToolNode' | 'MemoryNode'
   | 'Condition' | 'Switch' | 'Loop' | 'Delay'
   | 'Transform' | 'Filter' | 'Merge' | 'Split' | 'Set'
   | 'SubWorkflow' | 'Action';
@@ -158,8 +158,11 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   { type: 'Slack', name: 'Slack', icon: '💬', color: '#4a154b', category: 'Actions', description: 'Send Slack messages', inputs: 1, outputs: 1 },
   // AI
   { type: 'AiChat', name: 'AI Chat', icon: '🤖', color: '#10b981', category: 'AI', description: 'Chat with AI (OpenAI)', inputs: 1, outputs: 1 },
-  { type: 'AiAgent', name: 'AI Agent', icon: '🧠', color: '#059669', category: 'AI', description: 'Autonomous AI agent with tools', inputs: 1, outputs: 1 },
+  { type: 'AiAgent', name: 'AI Agent', icon: '🧠', color: '#059669', category: 'AI', description: 'Flexible AI agent with model, tools & memory', inputs: 4, outputs: 1 },
   { type: 'TextSummarizer', name: 'Summarize', icon: '📝', color: '#16a34a', category: 'AI', description: 'Summarize text with AI', inputs: 1, outputs: 1 },
+  { type: 'ChatModel', name: 'Chat Model', icon: '🤖', color: '#06b6d4', category: 'AI', description: 'LLM model (gpt-4, claude, etc)', inputs: 0, outputs: 1 },
+  { type: 'ToolNode', name: 'Tool', icon: '🔧', color: '#f97316', category: 'AI', description: 'Reusable tool for AI agents', inputs: 0, outputs: 1 },
+  { type: 'MemoryNode', name: 'Memory', icon: '💾', color: '#8b5cf6', category: 'AI', description: 'Memory system (Redis, Vector DB)', inputs: 0, outputs: 1 },
   // Logic
   { type: 'Condition', name: 'IF', icon: '◇', color: '#f59e0b', category: 'Logic', description: 'Conditional branching (true/false)', inputs: 1, outputs: 2 },
   { type: 'Switch', name: 'Switch', icon: '⑂', color: '#f97316', category: 'Logic', description: 'Multi-path routing', inputs: 1, outputs: 4 },

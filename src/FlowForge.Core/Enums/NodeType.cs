@@ -17,6 +17,9 @@ public enum NodeType
     AiChat = 30,
     AiAgent = 31,
     TextSummarizer = 32,
+    ChatModel = 41,        // AI Models (GPT-4, Claude, etc.)
+    ToolNode = 42,         // Reusable Tools for Agents
+    MemoryNode = 43,       // Memory systems (Redis, Vector DB, etc.)
     // Logic
     Condition = 2,
     Switch = 14,
