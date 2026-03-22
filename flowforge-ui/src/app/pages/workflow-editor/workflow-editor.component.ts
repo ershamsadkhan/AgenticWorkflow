@@ -474,33 +474,86 @@ interface CanvasNode extends WorkflowNode {
         }
       </div>
 
-      <!-- Chat Panel (only show if workflow has ChatMessage trigger) -->
-      @if (hasChatMessageTrigger()) {
-        <div class="chat-panel">
-          <div class="chat-header">
-            <h3>💬 Chat Input</h3>
-            <button class="btn-icon chat-minimize" (click)="toggleChatPanel()">_</button>
+      <!-- Bottom Panel (Chat and Logs Side by Side) -->
+      <div class="bottom-panel-container">
+        <!-- Chat Panel -->
+        @if (hasChatMessageTrigger()) {
+          <div class="bottom-panel-section chat-section">
+            <div class="panel-section-header">
+              <h3>💬 Chat Input</h3>
+            </div>
+            <div class="chat-messages">
+              @for (msg of chatMessages(); track $index) {
+                <div class="chat-message" [class.user]="msg.sender === 'user'">
+                  <div class="message-sender">{{ msg.sender === 'user' ? 'You' : 'System' }}</div>
+                  <div class="message-content">{{ msg.message }}</div>
+                  <div class="message-time">{{ msg.timestamp | date:'short' }}</div>
+                </div>
+              }
+            </div>
+            <div class="chat-input-area">
+              <input class="chat-input" 
+                     [(ngModel)]="chatInputValue" 
+                     (keyup.enter)="sendChatMessage()"
+                     placeholder="Type your message..." />
+              <button class="btn btn-primary btn-sm" (click)="sendChatMessage()" [disabled]="!chatInputValue.trim()">
+                ▶ Send
+              </button>
+            </div>
           </div>
-          <div class="chat-messages">
-            @for (msg of chatMessages(); track $index) {
-              <div class="chat-message" [class.user]="msg.sender === 'user'">
-                <div class="message-sender">{{ msg.sender === 'user' ? 'You' : 'System' }}</div>
-                <div class="message-content">{{ msg.message }}</div>
-                <div class="message-time">{{ msg.timestamp | date:'short' }}</div>
+        }
+
+        <!-- Logs Panel -->
+        <div class="bottom-panel-section logs-section" [class.full-width]="!hasChatMessageTrigger()">
+          <div class="panel-section-header">
+            <h3>📋 Logs</h3>
+          </div>
+          @if (selectedNodeExecution(); as log) {
+            <div class="logs-container">
+              <div class="log-section">
+                <div class="log-title">Node: {{ log.nodeName }}</div>
+                <div class="log-status" [class]="'status-' + log.status.toLowerCase()">
+                  ● {{ log.status }}
+                </div>
               </div>
-            }
-          </div>
-          <div class="chat-input-area">
-            <input class="chat-input" 
-                   [(ngModel)]="chatInputValue" 
-                   (keyup.enter)="sendChatMessage()"
-                   placeholder="Type your message..." />
-            <button class="btn btn-primary btn-sm" (click)="sendChatMessage()" [disabled]="!chatInputValue.trim()">
-              ▶ Send
-            </button>
-          </div>
+
+              @if (log.inputData) {
+                <div class="log-section">
+                  <div class="log-subtitle">📥 Input Data</div>
+                  <div class="log-content">
+                    <pre>{{ log.inputData }}</pre>
+                  </div>
+                </div>
+              }
+
+              @if (log.outputData) {
+                <div class="log-section">
+                  <div class="log-subtitle">📤 Output Data</div>
+                  <div class="log-content">
+                    <pre>{{ log.outputData }}</pre>
+                  </div>
+                </div>
+              }
+
+              @if (log.errorMessage) {
+                <div class="log-section error">
+                  <div class="log-subtitle">⚠ Error</div>
+                  <div class="log-content error-text">{{ log.errorMessage }}</div>
+                </div>
+              }
+
+              @if (!log.inputData && !log.outputData && !log.errorMessage) {
+                <div class="log-empty">No data available for this execution</div>
+              }
+            </div>
+          } @else {
+            <div class="log-empty">
+              <div class="log-empty-icon">📋</div>
+              <p>Click on a node after execution to view its logs</p>
+            </div>
+          }
         </div>
-      }
+      </div>
     </div>
   `,
   styles: [`
@@ -603,11 +656,16 @@ interface CanvasNode extends WorkflowNode {
     .cron-btn-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .cron-btn { padding: 3px 10px; font-size: 11px; border: 1px solid var(--border-primary); border-radius: 12px; background: transparent; cursor: pointer; color: var(--text-secondary); transition: all .15s; &:hover { background: var(--bg-hover); color: var(--text-primary); } }
 
-    .chat-panel { display: flex; flex-direction: column; width: 100%; height: 280px; background: var(--bg-secondary); border-top: 1px solid var(--border-primary); flex-shrink: 0; }
-    .chat-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border-primary); background: var(--bg-tertiary); }
-    .chat-header h3 { font-size: 13px; font-weight: 600; margin: 0; color: var(--text-primary); }
-    .chat-minimize { font-size: 16px; cursor: pointer; }
+    .bottom-panel-container { display: flex; flex-direction: row; flex-wrap: nowrap; width: 100%; height: 280px; background: var(--bg-secondary); border-top: 1px solid var(--border-primary); flex-shrink: 0; gap: 0; }
+    .bottom-panel-section { flex: 1 1 50%; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--border-primary); overflow: hidden; }
+    .bottom-panel-section:last-child { border-right: none; }
+    .bottom-panel-section.full-width { flex: 1; }
+    .panel-section-header { padding: 8px 12px; background: var(--bg-tertiary); border-bottom: 1px solid var(--border-primary); font-weight: 500; }
+    .panel-section-header h3 { margin: 0; font-size: 13px; color: var(--text-primary); }
+
     .chat-messages { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+    .chat-section { background: var(--bg-secondary); }
+    .logs-section { background: var(--bg-secondary); }
     .chat-message { display: flex; flex-direction: column; padding: 8px 12px; border-radius: var(--radius-md); background: var(--bg-tertiary); }
     .chat-message.user { align-self: flex-end; background: var(--accent-primary); color: white; max-width: 70%; }
     .chat-message.user .message-sender { color: rgba(255,255,255,0.8); }
@@ -618,6 +676,19 @@ interface CanvasNode extends WorkflowNode {
     .message-time { font-size: 9px; color: var(--text-tertiary); margin-top: 2px; }
     .chat-input-area { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border-primary); background: var(--bg-secondary); flex-shrink: 0; }
     .chat-input { flex: 1; padding: 8px 12px; border: 1px solid var(--border-primary); border-radius: var(--radius-md); background: var(--bg-input); color: var(--text-primary); font-size: 12px; outline: none; &:focus { border-color: var(--accent-primary); } }
+
+    .logs-container { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+    .log-section { display: flex; flex-direction: column; gap: 4px; }
+    .log-section.error { border-left: 3px solid #ef4444; padding-left: 12px; }
+    .log-title { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+    .log-subtitle { font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+    .log-status { font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 4px; width: fit-content; &.status-success { background: rgba(34,197,94,.15); color: #22c55e; } &.status-failed { background: rgba(239,68,68,.15); color: #ef4444; } &.status-pending { background: rgba(107,114,128,.15); color: #6b7280; } &.status-running { background: rgba(59,130,246,.15); color: #3b82f6; } }
+    .log-content { background: var(--bg-tertiary); border: 1px solid var(--border-primary); border-radius: var(--radius-md); padding: 10px 12px; max-height: 120px; overflow-y: auto; }
+    .log-content pre { margin: 0; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 11px; color: var(--text-primary); line-height: 1.4; white-space: pre-wrap; word-wrap: break-word; }
+    .log-content.error-text { color: #ef4444; }
+    .log-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-tertiary); }
+    .log-empty-icon { font-size: 40px; margin-bottom: 8px; opacity: 0.5; }
+    .log-empty p { font-size: 12px; margin: 0; }
     .info-box { padding: 8px 12px; background: var(--bg-tertiary); border-left: 3px solid var(--accent-primary); border-radius: var(--radius-sm); }
   `]
 })
@@ -660,6 +731,10 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
   chatMessages = signal<Array<{ sender: string; message: string; timestamp: Date }>>([]);
   chatInputValue = '';
   chatPanelOpen = signal(true);
+
+  // Logs panel properties
+  selectedNodeExecution = signal<any>(null);
+  lastExecution = signal<any>(null);
 
   private pollSub?: Subscription;
 
@@ -767,6 +842,21 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
   selectNode(node: CanvasNode) {
     this.nodes.update(ns => ns.map(n => ({ ...n, selected: n.id === node.id })));
     this.selectedNode.set(this.nodes().find(n => n.id === node.id) || null);
+    
+    // Show logs if execution data exists
+    if (this.lastExecution()) {
+      const nodeExecution = this.lastExecution().nodeExecutions?.find((ne: any) => ne.nodeId === node.id);
+      if (nodeExecution) {
+        this.selectedNodeExecution.set({
+          nodeName: node.name,
+          status: nodeExecution.status,
+          inputData: nodeExecution.inputData ? this.formatJson(nodeExecution.inputData) : null,
+          outputData: nodeExecution.outputData ? this.formatJson(nodeExecution.outputData) : null,
+          errorMessage: nodeExecution.errorMessage
+        });
+        this.bottomPanelTab.set('logs');
+      }
+    }
   }
 
   deselectAll() {
@@ -943,6 +1033,7 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
     this.api.runWorkflow(this.workflowId()!).subscribe({
       next: (ex: WorkflowExecution) => {
         this.executionStatus.set(ex.status);
+        this.lastExecution.set(ex);
         if (ex.nodeExecutions) {
           this.nodes.update(ns => ns.map(n => {
             const ne = ex.nodeExecutions?.find(ne => ne.nodeId === n.id);
@@ -1071,5 +1162,18 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
 
     // Clear input
     this.chatInputValue = '';
+  }
+
+  // Helper method to format JSON data for display
+  formatJson(jsonStr: string | null): string | null {
+    if (!jsonStr) return null;
+    try {
+      // Try to parse as JSON and pretty print
+      const parsed = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      // If not JSON, return as is
+      return jsonStr;
+    }
   }
 }
