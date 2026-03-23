@@ -1,0 +1,51 @@
+    <aside class="sidebar" [class.collapsed]="collapsed()">
+      <div class="sidebar-brand">
+        <div class="logo">
+          <svg viewBox="0 0 32 32" width="32" height="32">
+            <defs>
+              <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#6366f1"/>
+                <stop offset="100%" stop-color="#a855f7"/>
+              </linearGradient>
+            </defs>
+            <rect width="32" height="32" rx="8" fill="url(#logoGrad)"/>
+            <path d="M10 11h4l4 5-4 5h-4l4-5z" fill="white"/>
+            <path d="M16 11h4l4 5-4 5h-4l4-5z" fill="white" opacity=".6"/>
+          </svg>
+        </div>
+        @if (!collapsed()) {
+          <span class="brand-text">FlowForge</span>
+        }
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          @if (!collapsed()) { <span class="nav-label">Main</span> }
+          @for (item of mainNav; track item.path) {
+            <a [routerLink]="item.path" routerLinkActive="active" class="nav-item"
+               [attr.title]="collapsed() ? item.label : null">
+              <span class="nav-icon">{{ item.icon }}</span>
+              @if (!collapsed()) { <span class="nav-text">{{ item.label }}</span> }
+            </a>
+          }
+        </div>
+
+        <div class="nav-section">
+          @if (!collapsed()) { <span class="nav-label">Manage</span> }
+          @for (item of manageNav; track item.path) {
+            <a [routerLink]="item.path" routerLinkActive="active" class="nav-item"
+               [attr.title]="collapsed() ? item.label : null">
+              <span class="nav-icon">{{ item.icon }}</span>
+              @if (!collapsed()) { <span class="nav-text">{{ item.label }}</span> }
+            </a>
+          }
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button class="collapse-btn" (click)="toggleCollapse.emit()">
+          <span class="nav-icon">{{ collapsed() ? '▶' : '◀' }}</span>
+          @if (!collapsed()) { <span class="nav-text">Collapse</span> }
+        </button>
+      </div>
+    </aside>

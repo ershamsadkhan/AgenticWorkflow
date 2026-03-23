@@ -1,0 +1,104 @@
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Variables</h1>
+        <p class="page-subtitle">Manage global and workflow-scoped variables for use in expressions</p>
+      </div>
+      <button class="btn btn-primary" (click)="showForm.set(true)">+ New Variable</button>
+    </div>
+
+    @if (showForm()) {
+      <div class="form-card card mb-24">
+        <h3 class="mb-16">{{ editing() ? 'Edit Variable' : 'New Variable' }}</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Key *</label>
+            <input class="input" [(ngModel)]="form.key" placeholder="myVariable" />
+            <span class="form-hint">Use in workflows as $vars.{{ form.key || 'key' }}</span>
+          </div>
+          <div class="form-group">
+            <label>Value</label>
+            <input class="input" [(ngModel)]="form.value"
+                   [type]="form.type === 'secret' ? 'password' : 'text'" placeholder="value" />
+          </div>
+          <div class="form-group">
+            <label>Type</label>
+            <select class="input" [(ngModel)]="form.type">
+              <option value="string">String</option>
+              <option value="number">Number</option>
+              <option value="boolean">Boolean</option>
+              <option value="secret">Secret</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Scope</label>
+            <select class="input" [(ngModel)]="form.scope">
+              <option value="global">Global</option>
+              <option value="workflow">Workflow-scoped</option>
+            </select>
+          </div>
+          <div class="form-group" style="grid-column: 1 / -1;">
+            <label>Description</label>
+            <input class="input" [(ngModel)]="form.description" placeholder="What is this variable for?" />
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-ghost" (click)="cancelForm()">Cancel</button>
+          <button class="btn btn-primary" (click)="saveVariable()" [disabled]="!form.key">
+            {{ editing() ? 'Update' : 'Create' }} Variable
+          </button>
+        </div>
+      </div>
+    }
+
+    <div class="card">
+      <div class="table-header">
+        <input class="input search-input" [(ngModel)]="search" placeholder="Search variables..." />
+        <div class="filter-tabs">
+          <button class="tab-btn" [class.active]="scopeFilter() === 'all'" (click)="scopeFilter.set('all')">All</button>
+          <button class="tab-btn" [class.active]="scopeFilter() === 'global'" (click)="scopeFilter.set('global')">Global</button>
+          <button class="tab-btn" [class.active]="scopeFilter() === 'workflow'" (click)="scopeFilter.set('workflow')">Workflow</button>
+        </div>
+      </div>
+
+      @if (loading()) {
+        <div class="loading-state">Loading variables...</div>
+      } @else {
+        @if (filteredVars().length === 0) {
+        <div class="empty-state">
+          <div class="empty-icon">{{ leftBrace }} {{ rightBrace }}</div>
+          <h3>No variables yet</h3>
+          <p>Create variables to use in your workflow expressions</p>
+        </div>
+        } @else {
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Value</th>
+              <th>Type</th>
+              <th>Scope</th>
+              <th>Description</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (v of filteredVars(); track v.id) {
+              <tr>
+                <td><code class="var-key">{{ v.key }}</code></td>
+                <td class="var-value">{{ v.type === 'secret' ? '••••••••' : (v.value || '—') }}</td>
+                <td><span class="badge" [class]="'badge-' + v.type">{{ v.type }}</span></td>
+                <td><span class="badge badge-scope">{{ v.scope }}</span></td>
+                <td class="text-muted">{{ v.description || '—' }}</td>
+                <td>
+                  <div class="row-actions">
+                    <button class="btn-icon-sm" (click)="editVariable(v)" title="Edit">✏</button>
+                    <button class="btn-icon-sm danger" (click)="deleteVariable(v.id)" title="Delete">🗑</button>
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+        }
+      }
+    </div>

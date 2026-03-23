@@ -1,0 +1,78 @@
+    <div class="settings-page animate-fade-in">
+      <h2 class="page-title">Settings</h2>
+      <p class="page-subtitle">Manage your account and application preferences</p>
+
+      <div class="settings-grid">
+        <!-- Profile -->
+        <div class="card settings-card">
+          <h3 class="section-title">Profile</h3>
+          <div class="form-group">
+            <label>Email</label>
+            <input class="input" [value]="auth.currentUser()?.email" disabled />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>First Name</label>
+              <input class="input" [value]="auth.currentUser()?.firstName" />
+            </div>
+            <div class="form-group">
+              <label>Last Name</label>
+              <input class="input" [value]="auth.currentUser()?.lastName" />
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm">Save Changes</button>
+        </div>
+
+        <!-- Appearance -->
+        <div class="card settings-card">
+          <h3 class="section-title">Appearance</h3>
+          <div class="theme-selector">
+            <div class="theme-option" [class.active]="theme.isDark()" (click)="theme.isDark() || theme.toggle()">
+              <div class="theme-preview dark-preview">
+                <div class="preview-sidebar"></div>
+                <div class="preview-content">
+                  <div class="preview-block"></div>
+                  <div class="preview-block"></div>
+                </div>
+              </div>
+              <span>Dark</span>
+            </div>
+            <div class="theme-option" [class.active]="!theme.isDark()" (click)="!theme.isDark() || theme.toggle()">
+              <div class="theme-preview light-preview">
+                <div class="preview-sidebar"></div>
+                <div class="preview-content">
+                  <div class="preview-block"></div>
+                  <div class="preview-block"></div>
+                </div>
+              </div>
+              <span>Light</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- API -->
+        <div class="card settings-card">
+          <h3 class="section-title">API Configuration</h3>
+          <div class="form-group">
+            <label>API Base URL</label>
+            <input class="input" value="http://localhost:5000" />
+          </div>
+          <div class="form-group">
+            <label>Webhook Base URL</label>
+            <input class="input" value="http://localhost:5000/webhook" />
+          </div>
+        </div>
+
+        <!-- Danger Zone -->
+        <div class="card settings-card danger-zone">
+          <h3 class="section-title" style="color: var(--danger)">Danger Zone</h3>
+          <div class="danger-item">
+            <div>
+              <strong>Log out</strong>
+              <p>Sign out of your account</p>
+            </div>
+            <button class="btn btn-danger btn-sm" (click)="auth.logout()">Log Out</button>
+          </div>
+        </div>
+      </div>
+    </div>

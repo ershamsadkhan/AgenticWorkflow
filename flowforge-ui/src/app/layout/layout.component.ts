@@ -8,38 +8,8 @@ import { HeaderComponent } from './header/header.component';
   selector: 'app-layout',
   standalone: true,
   imports: [CommonModule, RouterOutlet, SidebarComponent, HeaderComponent],
-  template: `
-    <div class="app-layout">
-      <app-sidebar [collapsed]="sidebarCollapsed()" (toggleCollapse)="toggleSidebar()" />
-      <div class="main-area">
-        <app-header />
-        <main class="content">
-          <router-outlet />
-        </main>
-      </div>
-    </div>
-  `,
-  styles: [`
-    .app-layout {
-      display: flex;
-      height: 100vh;
-      width: 100vw;
-    }
-
-    .main-area {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    .content {
-      flex: 1;
-      overflow-y: auto;
-      padding: 28px;
-      background: var(--bg-primary);
-    }
-  `]
+  templateUrl: './layout.component.html',
+  styleUrl: './layout.component.css'
 })
 export class LayoutComponent {
   sidebarCollapsed = signal(false);

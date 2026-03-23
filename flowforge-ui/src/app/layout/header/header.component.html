@@ -1,0 +1,41 @@
+    <header class="header">
+      <div class="header-left">
+        <h1 class="page-title">{{ getPageTitle() }}</h1>
+      </div>
+
+      <div class="header-right">
+        <div class="search-box">
+          <span class="search-icon">⌕</span>
+          <input type="text" placeholder="Search workflows..." class="search-input" />
+          <kbd class="search-kbd">⌘K</kbd>
+        </div>
+
+        <button class="btn-icon theme-toggle" (click)="theme.toggle()" [title]="theme.isDark() ? 'Light mode' : 'Dark mode'">
+          {{ theme.isDark() ? '☀' : '☾' }}
+        </button>
+
+        <div class="notification-btn btn-icon" title="Notifications">
+          🔔
+          <span class="notification-dot"></span>
+        </div>
+
+        <div class="user-menu" (click)="showMenu = !showMenu">
+          <div class="avatar">
+            {{ getInitials() }}
+          </div>
+          @if (showMenu) {
+            <div class="dropdown" (click)="$event.stopPropagation()">
+              <div class="dropdown-header">
+                <strong>{{ auth.currentUser()?.firstName }} {{ auth.currentUser()?.lastName }}</strong>
+                <span class="user-email">{{ auth.currentUser()?.email }}</span>
+              </div>
+              <div class="dropdown-divider"></div>
+              <button class="dropdown-item" (click)="showMenu = false">Profile</button>
+              <button class="dropdown-item" (click)="showMenu = false">Settings</button>
+              <div class="dropdown-divider"></div>
+              <button class="dropdown-item danger" (click)="auth.logout()">Log out</button>
+            </div>
+          }
+        </div>
+      </div>
+    </header>

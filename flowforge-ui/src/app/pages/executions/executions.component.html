@@ -1,0 +1,106 @@
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Executions</h1>
+        <p class="page-subtitle">View and monitor all workflow executions</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" (click)="loadExecutions()">↻ Refresh</button>
+    </div>
+
+    <div class="card">
+      <div class="table-filters">
+        <div class="status-tabs">
+          @for (tab of statusTabs; track tab.value) {
+            <button class="tab-btn" [class.active]="statusFilter() === tab.value"
+                    (click)="statusFilter.set(tab.value)">
+              {{ tab.label }}
+              @if (tab.value !== 'all') {
+                <span class="tab-count">{{ getCount(tab.value) }}</span>
+              }
+            </button>
+          }
+        </div>
+        <input class="input search-input" [(ngModel)]="search" placeholder="Search by workflow..." />
+      </div>
+
+      @if (loading()) {
+        <div class="loading">Loading executions...</div>
+      } @else if (filtered().length === 0) {
+        <div class="empty-state">
+          <div style="font-size:48px; opacity:.2; margin-bottom:12px">▷</div>
+          <h3>No executions found</h3>
+          <p>Run a workflow to see execution history here</p>
+        </div>
+      } @else {
+        <table class="exec-table">
+          <thead>
+            <tr>
+              <th>Workflow</th>
+              <th>Status</th>
+              <th>Mode</th>
+              <th>Started</th>
+              <th>Duration</th>
+              <th>Nodes</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (ex of filtered(); track ex.id) {
+              <tr class="exec-row" [class.selected]="selectedId() === ex.id">
+                <td>
+                  <a [routerLink]="['/editor', ex.workflowId]" class="workflow-link">{{ ex.workflowName }}</a>
+                </td>
+                <td><span class="status-badge" [class]="'status-' + ex.status.toLowerCase()">
+                  {{ statusIcon(ex.status) }} {{ ex.status }}
+                </span></td>
+                <td><span class="mode-badge">{{ ex.mode }}</span></td>
+                <td class="text-muted">{{ formatDate(ex.startedAt) }}</td>
+                <td class="text-muted mono">{{ formatDuration(ex.durationMs) }}</td>
+                <td class="text-muted">{{ ex.nodeExecutions?.length ?? '—' }}</td>
+                <td>
+                  <div class="row-actions">
+                    <button class="btn-icon-sm" (click)="toggleDetail(ex)" title="View details">
+                      {{ selectedId() === ex.id ? '▲' : '▼' }}
+                    </button>
+                    <button class="btn-icon-sm danger" (click)="deleteExecution(ex.id)" title="Delete">🗑</button>
+                  </div>
+                </td>
+              </tr>
+              @if (selectedId() === ex.id && ex.nodeExecutions) {
+                <tr class="detail-row">
+                  <td colspan="7">
+                    <div class="node-executions">
+                      <div class="ne-header">Node Execution Details</div>
+                      <div class="ne-list">
+                        @for (ne of ex.nodeExecutions; track ne.id) {
+                          <div class="ne-item" [class]="'ne-' + ne.status.toLowerCase()">
+                            <div class="ne-status">{{ statusIcon(ne.status) }}</div>
+                            <div class="ne-info">
+                              <div class="ne-name">{{ ne.nodeName }}</div>
+                              <div class="ne-time">{{ formatDuration(ne.durationMs) }}</div>
+                            </div>
+                            @if (ne.errorMessage) {
+                              <div class="ne-error">{{ ne.errorMessage }}</div>
+                            }
+                          </div>
+                        }
+                      </div>
+                      @if (ex.errorMessage) {
+                        <div class="exec-error">
+                          <strong>Error:</strong> {{ ex.errorMessage }}
+                        </div>
+                      }
+                    </div>
+                  </td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+
+        <div class="pagination">
+          <button class="btn btn-ghost btn-sm" [disabled]="page() === 1" (click)="prevPage()">← Prev</button>
+          <span class="page-info">Page {{ page() }}</span>
+          <button class="btn btn-ghost btn-sm" (click)="nextPage()">Next →</button>
+        </div>
+      }
+    </div>

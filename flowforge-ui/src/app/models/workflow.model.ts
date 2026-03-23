@@ -161,8 +161,10 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   { type: 'AiAgent', name: 'AI Agent', icon: '🧠', color: '#059669', category: 'AI', description: 'Flexible AI agent with model, tools & memory', inputs: 4, outputs: 1 },
   { type: 'TextSummarizer', name: 'Summarize', icon: '📝', color: '#16a34a', category: 'AI', description: 'Summarize text with AI', inputs: 1, outputs: 1 },
   { type: 'ChatModel', name: 'Chat Model', icon: '🤖', color: '#06b6d4', category: 'AI', description: 'LLM model (gpt-4, claude, etc)', inputs: 0, outputs: 1 },
-  { type: 'ToolNode', name: 'Tool', icon: '🔧', color: '#f97316', category: 'AI', description: 'Reusable tool for AI agents', inputs: 0, outputs: 1 },
-  { type: 'MemoryNode', name: 'Memory', icon: '💾', color: '#8b5cf6', category: 'AI', description: 'Memory system (Redis, Vector DB)', inputs: 0, outputs: 1 },
+  // Tool
+  { type: 'ToolNode', name: 'Tool', icon: '🔧', color: '#f97316', category: 'Tool', description: 'Reusable tool for AI agents', inputs: 0, outputs: 1 },
+  // Memory
+  { type: 'MemoryNode', name: 'Memory', icon: '💾', color: '#8b5cf6', category: 'Memory', description: 'Memory system (Redis, Vector DB)', inputs: 0, outputs: 1 },
   // Logic
   { type: 'Condition', name: 'IF', icon: '◇', color: '#f59e0b', category: 'Logic', description: 'Conditional branching (true/false)', inputs: 1, outputs: 2 },
   { type: 'Switch', name: 'Switch', icon: '⑂', color: '#f97316', category: 'Logic', description: 'Multi-path routing', inputs: 1, outputs: 4 },
