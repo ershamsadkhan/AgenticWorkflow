@@ -160,7 +160,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   { type: 'AiChat', name: 'AI Chat', icon: '🤖', color: '#10b981', category: 'AI', description: 'Chat with AI (OpenAI)', inputs: 1, outputs: 1 },
   { type: 'AiAgent', name: 'AI Agent', icon: '🧠', color: '#059669', category: 'AI', description: 'Flexible AI agent with model, tools & memory', inputs: 4, outputs: 1 },
   { type: 'TextSummarizer', name: 'Summarize', icon: '📝', color: '#16a34a', category: 'AI', description: 'Summarize text with AI', inputs: 1, outputs: 1 },
-  { type: 'ChatModel', name: 'Chat Model', icon: '🤖', color: '#06b6d4', category: 'AI', description: 'LLM model (gpt-4, claude, etc)', inputs: 0, outputs: 1 },
+  { type: 'ChatModel', name: 'Chat Model', icon: '🤖', color: '#06b6d4', category: 'Model', description: 'LLM model (gpt-4, claude, etc)', inputs: 0, outputs: 1 },
   // Tool
   { type: 'ToolNode', name: 'Tool', icon: '🔧', color: '#f97316', category: 'Tool', description: 'Reusable tool for AI agents', inputs: 0, outputs: 1 },
   // Memory

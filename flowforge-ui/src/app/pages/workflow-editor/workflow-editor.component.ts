@@ -1,23 +1,21 @@
-import { Component, inject, signal, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { Component, inject, signal, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewInit, ViewEncapsulation } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService } from '../../services/api.service';
 import { WorkflowNode, NodeConnection, NodeType, NODE_DEFINITIONS, NodeDefinition, WorkflowExecution } from '../../models/workflow.model';
 import { Subscription } from 'rxjs';
+import { CanvasNodeComponent, CanvasNodeData, NodeConfigHostComponent } from '../../components/nodes';
 
-interface CanvasNode extends WorkflowNode {
-  def: NodeDefinition;
-  selected?: boolean;
-  execStatus?: 'success' | 'failed' | 'running' | 'pending';
-}
+type CanvasNode = CanvasNodeData & WorkflowNode;
 
 @Component({
   selector: 'app-workflow-editor',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, CanvasNodeComponent, NodeConfigHostComponent],
   templateUrl: './workflow-editor.component.html',
-  styleUrl: './workflow-editor.component.css'
+  styleUrl: './workflow-editor.component.css',
+  encapsulation: ViewEncapsulation.None
 })
 export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('canvasContainer') canvasContainer!: ElementRef<HTMLDivElement>;
@@ -278,7 +276,10 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
       const mx = (event.clientX - rect.left - this.panX()) / this.zoom();
       const my = (event.clientY - rect.top - this.panY()) / this.zoom();
       const fn = this.connectingFrom.node;
-      this.tempConnection.set(this.bezierPath(fn.positionX + 200, fn.positionY + 34, mx, my));
+      const isRound = fn.type === 'ToolNode' || fn.type === 'MemoryNode' || fn.type === 'ChatModel';
+      const outX = isRound ? fn.positionX + 34 : fn.positionX + 200;
+      const outY = isRound ? fn.positionY : fn.positionY + 34;
+      this.tempConnection.set(this.bezierPath(outX, outY, mx, my));
     }
   }
 
@@ -327,19 +328,31 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
     if (!source || !target) return '';
 
     // Get target handle position
-    let targetX = target.positionX;
-    let targetY = target.positionY + 34;
+    const isRoundTarget = target.type === 'ToolNode' || target.type === 'MemoryNode' || target.type === 'ChatModel';
+    let targetX = isRoundTarget ? target.positionX + 34 : target.positionX;
+    let targetY = isRoundTarget ? target.positionY : target.positionY + 34;
 
-    // For AI Agent nodes with bottom inputs, calculate the position
+    // For AI Agent nodes
     if (target.type === 'AiAgent') {
-      const match = conn.targetHandle?.match(/input(\d+)/);
-      const inputIndex = match ? parseInt(match[1]) : 0;
-      const positions = [38, 100, 162]; // x positions for Chat Model, Memory, Tool
-      targetX = target.positionX + (positions[inputIndex] || 38);
-      targetY = target.positionY + 100;
+      if (conn.targetHandle === 'input') {
+        // Data input on left side
+        targetX = target.positionX;
+        targetY = target.positionY + 60;
+      } else {
+        // Bottom inputs: input0=Chat Model, input1=Memory, input2=Tool
+        const match = conn.targetHandle?.match(/input(\d+)/);
+        const inputIndex = match ? parseInt(match[1]) : 0;
+        const positions = [38, 100, 162];
+        targetX = target.positionX + (positions[inputIndex] || 38);
+        targetY = target.positionY + 120;
+      }
     }
 
-    return this.bezierPath(source.positionX + 200, source.positionY + 34, targetX, targetY);
+    // Round nodes have output at top center
+    const isRoundSource = source.type === 'ToolNode' || source.type === 'MemoryNode' || source.type === 'ChatModel';
+    const sourceOutX = isRoundSource ? source.positionX + 34 : source.positionX + 200;
+    const sourceOutY = isRoundSource ? source.positionY : source.positionY + 34;
+    return this.bezierPath(sourceOutX, sourceOutY, targetX, targetY);
   }
 
   private bezierPath(sx: number, sy: number, tx: number, ty: number): string {
@@ -459,6 +472,12 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
     if (!node) return;
     (node as any)[prop] = value;
     this.nodes.update(ns => ns.map(n => n.id === node.id ? { ...node } : n));
+  }
+
+  setRawConfig(node: CanvasNode, value: string) {
+    node.configuration = value;
+    this.nodes.update(ns => ns.map(n => n.id === node.id ? { ...node } : n));
+    this.selectedNode.set({ ...node });
   }
 
   toggleNodeDisabled() {
